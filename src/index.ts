@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { raw } from './db';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
@@ -11,6 +12,19 @@ import { statsRoutes } from './routes/stats';
 import { syncRoutes } from './routes/sync';
 
 const app = new Hono();
+
+// Permissive CORS for the Electrobun desktop app + local browser tools.
+// All routes are read-mostly and on localhost; the public-facing edge is the
+// OAuth proxy in expose-tunnels/, which has its own auth.
+app.use(
+	'*',
+	cors({
+		origin: (origin) => origin ?? '*',
+		allowMethods: ['GET', 'POST', 'OPTIONS'],
+		allowHeaders: ['Content-Type', 'Authorization'],
+		credentials: false,
+	}),
+);
 
 app.route('/', libraryRoutes(raw));
 app.route('/', similarRoutes(raw));

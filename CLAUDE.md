@@ -11,6 +11,7 @@ the Steam "more like this" graph. Hybrid keyword + semantic search via Ollama.
 - `bun run sync:epic` — Sync Epic Games library (requires legendary, see below)
 - `bun run auth:gog` / `bun run sync:gog` — Auth and sync GOG library (OAuth, see below)
 - `bun run sync:youtube` — Discover YouTube videos for the next batch of un-fetched games (newest first; stops on quota)
+- `bun run desktop` — Launch the SEG desktop app (Electrobun shell at `apps/desktop/`, Vite HMR on :5173, expects API on :3110)
 - `bun run enrich` — Enrich a batch of un-enriched games (appdetails + SteamSpy + HLTB + similar)
 - `bun run embed` — Embed enriched-but-unembedded games via Ollama
 - `bun run lint` — Lint with Biome (errors on warnings)
@@ -92,10 +93,12 @@ docker-compose with the same supercronic-with-startup-run pattern.
 ## Project Structure
 
 - `src/` — API server (routes, db, lib)
-- `scripts/` — Cron entrypoints (sync-owned, enrich, embed)
+- `scripts/` — Cron entrypoints (sync-owned, enrich, embed, sync-youtube, sync-epic, sync-gog, auth-gog)
+- `apps/desktop/` — Electrobun desktop UI (React + Vite + Tailwind, talks to localhost:3110)
 - `yaak/` — Yaak workspace (HTTP request examples)
 - `skills/library-search/` — Claude Code plugin skill
 - `.claude-plugin/` — Plugin manifest
+- `migrations/` — Numbered SQL migrations applied via `docker exec ... psql < ...`
 
 ## Containers (docker-compose)
 
