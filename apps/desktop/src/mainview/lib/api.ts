@@ -163,6 +163,12 @@ async function jsonCall<T>(
 	return (await res.json()) as T;
 }
 
+export interface SimilarResponse {
+	source: { appid: number; name: string } | { query: string };
+	count: number;
+	results: (LibraryGame & { similarity: number })[];
+}
+
 export const api = {
 	stats: (signal?: AbortSignal) => get<Stats>("/stats", signal),
 	library: (
@@ -177,10 +183,22 @@ export const api = {
 	},
 	game: (appid: number, signal?: AbortSignal) =>
 		get<GameDetail>(`/games/${appid}`, signal),
+	similar: (
+		params: Record<string, string | number | undefined>,
+		signal?: AbortSignal,
+	) => {
+		const url = new URL(`${API_BASE}/similar`);
+		for (const [k, v] of Object.entries(params)) {
+			if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+		}
+		return get<SimilarResponse>(url.pathname + url.search, signal);
+	},
 	curate: (signal?: AbortSignal) =>
 		get<CurateResponse>("/curate", signal),
 	lists: (signal?: AbortSignal) =>
 		get<{ lists: ListSummary[] }>("/lists", signal),
+	listGames: (slug: string, signal?: AbortSignal) =>
+		get<ListSummary & { games: LibraryGame[] }>(`/lists/${slug}`, signal),
 	createList: (name: string, emoji?: string) =>
 		jsonCall<ListSummary>("/lists", "POST", { name, emoji }),
 	addToList: (listRef: string | number, appid: number, note?: string) =>

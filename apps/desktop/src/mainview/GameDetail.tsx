@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
 	type GameDetail as GameDetailType,
+	type LibraryGame,
 	type ListSummary,
 	api,
 	steamImg,
@@ -9,33 +10,26 @@ import { rpc } from "./lib/rpc";
 import type { InstalledIndex, Platform } from "../shared/types";
 
 interface Props {
-	appid: number;
+	stack: number[];
 	installed: InstalledIndex | null;
+	onBack: () => void;
 	onClose: () => void;
+	onNavigate: (appid: number) => void;
 }
 
 /**
- * Full-height drawer that slides in from the right with a backdrop.
- * Doesn't push the underlying grid (so no page squeeze).
+ * Full-page (99% inset) modal with a navigation stack so Similar and other
+ * cross-links can be followed without losing context. Top-left ← back appears
+ * once stack length > 1; ✕ closes the whole stack.
  */
-export function GameDetail({ appid, installed, onClose }: Props) {
-	const [game, setGame] = useState<GameDetailType | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [refreshing, setRefreshing] = useState(false);
-	const [refreshResult, setRefreshResult] = useState<string | null>(null);
-
-	useEffect(() => {
-		const ctrl = new AbortController();
-		setGame(null);
-		setError(null);
-		api
-			.game(appid, ctrl.signal)
-			.then(setGame)
-			.catch((e) => {
-				if (e.name !== "AbortError") setError(`Load failed: ${e.message}`);
-			});
-		return () => ctrl.abort();
-	}, [appid]);
+export function GameDetail({
+	stack,
+	installed,
+	onBack,
+	onClose,
+	onNavigate,
+}: Props) {
+	const appid = stack[stack.length - 1];
 
 	useEffect(() => {
 		const handle = (e: KeyboardEvent) => {
@@ -44,6 +38,90 @@ export function GameDetail({ appid, installed, onClose }: Props) {
 		window.addEventListener("keydown", handle);
 		return () => window.removeEventListener("keydown", handle);
 	}, [onClose]);
+
+	return (
+		<div
+			className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-stretch justify-center"
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+			onKeyDown={(e) => {
+				if (e.key === "Escape") onClose();
+			}}
+			role="dialog"
+			aria-modal="true"
+			tabIndex={-1}
+		>
+			<div className="relative w-[98vw] h-[97vh] my-auto rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl flex flex-col">
+				<div className="absolute top-3 left-3 right-3 z-20 flex items-center gap-2">
+					{stack.length > 1 ? (
+						<button
+							type="button"
+							onClick={onBack}
+							className="px-3 py-1.5 rounded-full bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm flex items-center gap-1.5"
+						>
+							<span aria-hidden>←</span>
+							<span>Back</span>
+						</button>
+					) : (
+						<div />
+					)}
+					<div className="flex-1" />
+					<button
+						type="button"
+						onClick={onClose}
+						className="w-9 h-9 rounded-full bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-base"
+						aria-label="Close detail"
+					>
+						✕
+					</button>
+				</div>
+				<div className="flex-1 overflow-y-auto">
+					<DetailBody
+						appid={appid}
+						installed={installed}
+						onNavigate={onNavigate}
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function DetailBody({
+	appid,
+	installed,
+	onNavigate,
+}: {
+	appid: number;
+	installed: InstalledIndex | null;
+	onNavigate: (appid: number) => void;
+}) {
+	const [game, setGame] = useState<GameDetailType | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [vectorSimilar, setVectorSimilar] = useState<LibraryGame[] | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
+	const [refreshResult, setRefreshResult] = useState<string | null>(null);
+
+	useEffect(() => {
+		const ctrl = new AbortController();
+		setGame(null);
+		setError(null);
+		setVectorSimilar(null);
+		api
+			.game(appid, ctrl.signal)
+			.then(setGame)
+			.catch((e) => {
+				if (e.name !== "AbortError") setError(`Load failed: ${e.message}`);
+			});
+		api
+			.similar({ appid, limit: 12 }, ctrl.signal)
+			.then((d) => setVectorSimilar(d.results))
+			.catch((e) => {
+				if (e.name !== "AbortError") console.warn("similar failed", e);
+			});
+		return () => ctrl.abort();
+	}, [appid]);
 
 	const installedPlatforms =
 		game !== null
@@ -54,9 +132,6 @@ export function GameDetail({ appid, installed, onClose }: Props) {
 
 	async function handleLaunch(platform: Platform, action: "run" | "install") {
 		if (!game) return;
-		// `install` only makes sense for Steam (steam://install/<appid>); other
-		// stores fall back to the regular launch URI which lands the user on
-		// the game's storefront page when not installed.
 		if (action === "install" && platform === "steam") {
 			await rpc.request.openUrl({ url: `steam://install/${game.appid}` });
 			return;
@@ -91,236 +166,247 @@ export function GameDetail({ appid, installed, onClose }: Props) {
 		}
 	}
 
-	const heroSrc = game ? steamImg(game.appid, "library_hero") : null;
+	if (error) {
+		return <div className="p-12 text-red-400 text-sm">{error}</div>;
+	}
+	if (!game) {
+		return <div className="p-12 text-zinc-500 text-sm">Loading…</div>;
+	}
+
+	const releaseYear = game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+	const heroSrc = steamImg(game.appid, "library_hero");
+	const topTags = game.tags.slice(0, 8);
 
 	return (
 		<>
-			{/* Backdrop */}
-			<button
-				type="button"
-				aria-label="Close detail"
-				onClick={onClose}
-				className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px]"
-			/>
-			{/* Drawer */}
-			<aside className="fixed top-0 right-0 z-50 h-screen w-[min(560px,92vw)] bg-zinc-950 border-l border-zinc-800 overflow-y-auto shadow-2xl">
-				{error && (
-					<div className="p-6">
-						<div className="text-red-400 text-sm">{error}</div>
-						<button
-							type="button"
-							onClick={onClose}
-							className="mt-4 text-xs text-zinc-400 hover:text-zinc-200"
-						>
-							Close
-						</button>
+			<div className="relative">
+				<img
+					src={heroSrc}
+					alt=""
+					className="w-full h-[420px] object-cover"
+					onError={(e) => {
+						if (game.header_image && e.currentTarget.src !== game.header_image) {
+							e.currentTarget.src = game.header_image;
+						}
+					}}
+				/>
+				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-zinc-950/10" />
+				<div className="absolute bottom-0 left-0 right-0 p-8 max-w-5xl">
+					<h2 className="text-4xl lg:text-5xl font-bold leading-tight drop-shadow-lg">
+						{game.name}
+					</h2>
+					<div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-zinc-200">
+						{releaseYear && <span>{releaseYear}</span>}
+						{game.developers && game.developers.length > 0 && (
+							<>
+								<span className="opacity-50">·</span>
+								<span>{game.developers.join(", ")}</span>
+							</>
+						)}
+						{game.genres && game.genres.length > 0 && (
+							<>
+								<span className="opacity-50">·</span>
+								<span>{game.genres.slice(0, 3).join(" / ")}</span>
+							</>
+						)}
 					</div>
-				)}
+				</div>
+			</div>
 
-				{!game && !error && (
-					<div className="p-6 text-zinc-500 text-sm">Loading…</div>
-				)}
-
-				{game && (
-					<div>
-						<div className="relative">
-							{heroSrc && (
-								<img
-									src={heroSrc}
-									alt={game.name}
-									className="w-full aspect-[1920/620] object-cover"
-									onError={(e) => {
-										if (game.header_image && e.currentTarget.src !== game.header_image) {
-											e.currentTarget.src = game.header_image;
-										}
-									}}
-								/>
-							)}
-							<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
+			<div className="px-8 py-6 max-w-6xl space-y-8">
+				<section>
+					<div className="flex flex-wrap gap-2 mb-4">
+						{game.platforms.map((p) => (
+							<PlatformBadge
+								key={p}
+								platform={p}
+								installed={isInstalledFor(installed, p, game)}
+							/>
+						))}
+					</div>
+					{launchPlatform && (
+						<div className="flex flex-wrap items-center gap-2">
+							<LaunchButton
+								platform={launchPlatform}
+								installed={installedPlatforms.includes(launchPlatform)}
+								onLaunch={(action) => handleLaunch(launchPlatform, action)}
+							/>
+							{game.platforms.length > 1 &&
+								game.platforms
+									.filter((p) => p !== launchPlatform)
+									.map((p) => (
+										<button
+											key={p}
+											type="button"
+											onClick={() =>
+												handleLaunch(
+													p,
+													isInstalledFor(installed, p, game) ? "run" : "install",
+												)
+											}
+											className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm"
+											title={`Launch on ${p}`}
+										>
+											{capitalize(p)}
+										</button>
+									))}
 							<button
 								type="button"
-								onClick={onClose}
-								className="absolute top-3 right-3 w-9 h-9 rounded-full bg-zinc-950/80 hover:bg-zinc-950 text-zinc-300 hover:text-white text-base"
-								aria-label="Close detail"
+								onClick={handleRefresh}
+								disabled={refreshing}
+								className="ml-auto px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm disabled:opacity-50"
 							>
-								✕
+								{refreshing ? "Refreshing…" : "Refresh data"}
 							</button>
-							<div className="absolute bottom-0 left-0 right-0 p-5">
-								<h2 className="text-2xl font-bold leading-tight drop-shadow-lg">
-									{game.name}
-								</h2>
-								<div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-300">
-									{game.release_date && <span>{game.release_date}</span>}
-									{game.developers && game.developers.length > 0 && (
-										<>
-											<span className="opacity-50">·</span>
-											<span>{game.developers.join(", ")}</span>
-										</>
-									)}
-								</div>
-							</div>
 						</div>
+					)}
+					{refreshResult && (
+						<div className="mt-2 text-[11px] text-zinc-500 font-mono">
+							{refreshResult}
+						</div>
+					)}
+				</section>
 
-						<div className="p-5 space-y-5">
+				<ListsSection
+					appid={game.appid}
+					memberOf={game.lists}
+					onChange={async () => {
+						const updated = await api.game(game.appid);
+						setGame(updated);
+					}}
+				/>
+
+				<div className="grid lg:grid-cols-[1.5fr_1fr] gap-8">
+					<div className="space-y-6">
+						{game.short_desc && (
 							<section>
-								<div className="flex flex-wrap gap-1.5 mb-3">
-									{game.platforms.map((p) => (
-										<PlatformBadge
-											key={p}
-											platform={p}
-											installed={isInstalledFor(installed, p, game)}
-										/>
+								<p className="text-base text-zinc-200 leading-relaxed">
+									{game.short_desc}
+								</p>
+							</section>
+						)}
+
+						{topTags.length > 0 && (
+							<section>
+								<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+									Tags
+								</h3>
+								<div className="flex flex-wrap gap-1.5">
+									{topTags.map((t) => (
+										<span
+											key={t.tag}
+											className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300"
+											title={`${t.votes.toLocaleString()} votes`}
+										>
+											{t.tag}
+										</span>
 									))}
 								</div>
-
-								{launchPlatform && (
-									<div className="flex flex-wrap items-center gap-2">
-										<LaunchButton
-											platform={launchPlatform}
-											installed={installedPlatforms.includes(launchPlatform)}
-											onLaunch={(action) => handleLaunch(launchPlatform, action)}
-										/>
-										{game.platforms.length > 1 &&
-											game.platforms
-												.filter((p) => p !== launchPlatform)
-												.map((p) => (
-													<button
-														key={p}
-														type="button"
-														onClick={() =>
-															handleLaunch(
-																p,
-																isInstalledFor(installed, p, game) ? "run" : "install",
-															)
-														}
-														className="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs"
-														title={`Launch on ${p}`}
-													>
-														{capitalize(p)}
-													</button>
-												))}
-										<button
-											type="button"
-											onClick={handleRefresh}
-											disabled={refreshing}
-											className="ml-auto px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs disabled:opacity-50"
-										>
-											{refreshing ? "Refreshing…" : "Refresh"}
-										</button>
-									</div>
-								)}
-								{refreshResult && (
-									<div className="mt-2 text-[11px] text-zinc-500 font-mono">
-										{refreshResult}
-									</div>
-								)}
 							</section>
+						)}
 
-							<ListsSection
-								appid={game.appid}
-								memberOf={game.lists}
-								onChange={async () => {
-									const updated = await api.game(game.appid);
-									setGame(updated);
-								}}
-							/>
+						{game.videos.length > 0 && (
+							<section>
+								<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+									Videos
+								</h3>
+								<div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+									{game.videos.slice(0, 6).map((v) => (
+										<VideoThumb key={v.video_id} video={v} />
+									))}
+								</div>
+							</section>
+						)}
+					</div>
 
-							{game.short_desc && (
-								<section>
-									<p className="text-sm text-zinc-300 leading-relaxed">
-										{game.short_desc}
-									</p>
-								</section>
-							)}
+					<div className="space-y-6">
+						<StatsRow game={game} positivePct={positivePct} />
 
-							<StatsRow game={game} positivePct={positivePct} />
-
-							{game.tags.length > 0 && (
-								<section>
-									<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
-										Tags
-									</h3>
-									<div className="flex flex-wrap gap-1">
-										{game.tags.slice(0, 15).map((t) => (
-											<span
-												key={t.tag}
-												className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300"
-												title={`${t.votes.toLocaleString()} votes`}
-											>
-												{t.tag}
-											</span>
-										))}
-									</div>
-								</section>
-							)}
-
-							{game.videos.length > 0 && (
-								<section>
-									<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
-										Videos · {game.videos.length}
-									</h3>
-									<div className="grid grid-cols-2 gap-2">
-										{game.videos.slice(0, 6).map((v) => (
-											<VideoThumb key={v.video_id} video={v} />
-										))}
-									</div>
-								</section>
-							)}
-
-							{game.similar.length > 0 && (
-								<section>
-									<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
-										Similar
-									</h3>
-									<div className="grid grid-cols-3 gap-2">
-										{game.similar
-											.filter((s) => s.header_image)
-											.slice(0, 6)
-											.map((s) => (
-												<div
-													key={s.appid}
-													className="rounded overflow-hidden bg-zinc-900"
-												>
-													{s.header_image && (
-														<img
-															src={s.header_image}
-															alt={s.name ?? ""}
-															className="w-full"
-														/>
-													)}
-													<div className="p-1.5 text-[11px] text-zinc-300 truncate">
-														{s.name}
-													</div>
-												</div>
-											))}
-									</div>
-								</section>
-							)}
-
-							{game.ownership.length > 0 && (
-								<section className="pt-2 border-t border-zinc-800">
-									<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
-										Ownership
-									</h3>
-									<ul className="space-y-1 text-xs text-zinc-400 font-mono">
-										{game.ownership.map((o) => (
+						{game.ownership.length > 0 && (
+							<section>
+								<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+									Ownership
+								</h3>
+								<ul className="space-y-1.5 text-sm">
+									{game.ownership.map((o) => {
+										const inst = isInstalledFor(installed, o.platform, game);
+										return (
 											<li
 												key={o.platform}
-												className="flex items-center justify-between"
+												className="flex items-center justify-between rounded-md bg-zinc-900 border border-zinc-800 px-3 py-2"
 											>
-												<span>{o.platform}</span>
-												<span className="text-zinc-600 truncate max-w-[60%]">
-													{o.external_id}
+												<span className="font-medium">{capitalize(o.platform)}</span>
+												<span
+													className={`text-xs ${
+														inst ? "text-emerald-400" : "text-zinc-500"
+													}`}
+												>
+													{inst ? "● Installed" : "Owned"}
 												</span>
 											</li>
-										))}
-									</ul>
-								</section>
-							)}
-						</div>
+										);
+									})}
+								</ul>
+							</section>
+						)}
 					</div>
+				</div>
+
+				<section>
+					<h3 className="text-base font-semibold mb-3">
+						Similar games you own
+					</h3>
+					{vectorSimilar === null ? (
+						<div className="text-sm text-zinc-500">Finding similar…</div>
+					) : vectorSimilar.length === 0 ? (
+						<div className="text-sm text-zinc-500">
+							No close matches in your library.
+						</div>
+					) : (
+						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+							{vectorSimilar.slice(0, 12).map((s) => (
+								<SimilarCard
+									key={s.appid}
+									game={s}
+									installed={installed}
+									onClick={() => onNavigate(s.appid)}
+								/>
+							))}
+						</div>
+					)}
+				</section>
+
+				{game.similar.length > 0 && (
+					<section>
+						<h3 className="text-base font-semibold mb-3">
+							Steam suggests
+							<span className="ml-2 text-xs text-zinc-500 font-normal">
+								(may include games you don't own)
+							</span>
+						</h3>
+						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+							{game.similar
+								.filter((s) => s.header_image)
+								.slice(0, 12)
+								.map((s) => (
+									<button
+										key={s.appid}
+										type="button"
+										onClick={() => onNavigate(s.appid)}
+										className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+									>
+										{s.header_image && (
+											<img src={s.header_image} alt={s.name ?? ""} className="w-full" />
+										)}
+										<div className="p-2 text-xs text-zinc-200 truncate">
+											{s.name}
+										</div>
+									</button>
+								))}
+						</div>
+					</section>
 				)}
-			</aside>
+			</div>
 		</>
 	);
 }
@@ -339,9 +425,9 @@ function LaunchButton({
 			<button
 				type="button"
 				onClick={() => onLaunch("run")}
-				className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-colors"
+				className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-colors"
 			>
-				▶ Launch on {capitalize(platform)}
+				Launch on {capitalize(platform)}
 			</button>
 		);
 	}
@@ -349,10 +435,10 @@ function LaunchButton({
 		<button
 			type="button"
 			onClick={() => onLaunch("install")}
-			className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-sm border border-zinc-700 transition-colors"
+			className="px-5 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-sm border border-zinc-700 transition-colors"
 		>
 			{platform === "steam"
-				? "⤓ Install with Steam"
+				? "Install with Steam"
 				: `Open on ${capitalize(platform)}`}
 		</button>
 	);
@@ -403,35 +489,31 @@ function ListsSection({
 
 	return (
 		<section>
-			<div className="flex items-center justify-between mb-2">
-				<h3 className="text-[10px] uppercase tracking-wider text-zinc-500">
-					Lists
-				</h3>
+			<div className="flex items-center gap-3">
+				{memberOf.length > 0 && (
+					<div className="flex flex-wrap gap-1.5">
+						{memberOf.map((l) => (
+							<span
+								key={l.id}
+								className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 border border-emerald-700/50 text-emerald-100"
+							>
+								{l.emoji && <span className="mr-1">{l.emoji}</span>}
+								{l.name}
+							</span>
+						))}
+					</div>
+				)}
 				<button
 					type="button"
 					onClick={() => setShowPicker((v) => !v)}
 					className="text-xs text-emerald-400 hover:text-emerald-300"
 				>
-					{showPicker ? "Done" : "Add to list…"}
+					{showPicker ? "Done" : memberOf.length > 0 ? "Edit lists" : "Add to list…"}
 				</button>
 			</div>
 
-			{memberOf.length > 0 && (
-				<div className="flex flex-wrap gap-1.5 mb-2">
-					{memberOf.map((l) => (
-						<span
-							key={l.id}
-							className="text-xs px-2 py-0.5 rounded bg-emerald-900/50 border border-emerald-700/50 text-emerald-100"
-						>
-							{l.emoji && <span className="mr-1">{l.emoji}</span>}
-							{l.name}
-						</span>
-					))}
-				</div>
-			)}
-
 			{showPicker && allLists && (
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 space-y-1">
+				<div className="mt-3 max-w-md rounded-lg border border-zinc-800 bg-zinc-900 p-2 space-y-1">
 					{allLists.map((l) => {
 						const isMember = memberSet.has(l.id);
 						return (
@@ -502,14 +584,14 @@ function PlatformBadge({
 }) {
 	return (
 		<span
-			className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded font-medium ${
+			className={`text-[11px] uppercase tracking-wide px-2.5 py-1 rounded-full font-medium ${
 				installed
 					? "bg-emerald-900/60 border border-emerald-700/60 text-emerald-200"
-					: "bg-zinc-800 text-zinc-400"
+					: "bg-zinc-800 text-zinc-400 border border-zinc-700/60"
 			}`}
 			title={installed ? "Installed on this machine" : "Owned but not installed"}
 		>
-			{installed && <span className="mr-1">●</span>}
+			{installed && <span className="mr-1.5">●</span>}
 			{platform}
 		</span>
 	);
@@ -524,18 +606,18 @@ function StatsRow({
 }) {
 	const items: { label: string; value: string }[] = [];
 	if (game.hltb_main !== null)
-		items.push({ label: "Main", value: `${game.hltb_main}h` });
+		items.push({ label: "Main story", value: `${game.hltb_main}h` });
 	if (game.hltb_extra !== null)
-		items.push({ label: "+Extras", value: `${game.hltb_extra}h` });
+		items.push({ label: "+ Extras", value: `${game.hltb_extra}h` });
 	if (game.hltb_complete !== null)
 		items.push({ label: "100%", value: `${game.hltb_complete}h` });
 	if (positivePct !== null)
-		items.push({ label: "Reviews", value: `${positivePct}% pos` });
+		items.push({ label: "Reviews", value: `${positivePct}% positive` });
 	if (game.metacritic !== null)
-		items.push({ label: "MC", value: String(game.metacritic) });
+		items.push({ label: "Metacritic", value: String(game.metacritic) });
 	if (game.playtime_min > 0)
 		items.push({
-			label: "Played",
+			label: "You played",
 			value: `${Math.round(game.playtime_min / 60)}h`,
 		});
 
@@ -543,9 +625,15 @@ function StatsRow({
 
 	return (
 		<section>
-			<div className="grid grid-cols-3 gap-2 text-center">
+			<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+				Stats
+			</h3>
+			<div className="grid grid-cols-2 gap-2">
 				{items.map((it) => (
-					<div key={it.label} className="bg-zinc-900 rounded-md py-2 px-2">
+					<div
+						key={it.label}
+						className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3"
+					>
 						<div className="text-[10px] uppercase tracking-wider text-zinc-500">
 							{it.label}
 						</div>
@@ -572,7 +660,7 @@ function VideoThumb({
 		<button
 			type="button"
 			onClick={handleClick}
-			className="text-left rounded overflow-hidden bg-zinc-900 hover:bg-zinc-800 transition-colors"
+			className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
 		>
 			{video.thumbnail_url && (
 				<img
@@ -581,12 +669,56 @@ function VideoThumb({
 					className="w-full aspect-video object-cover"
 				/>
 			)}
-			<div className="p-1.5">
-				<div className="text-[11px] text-zinc-200 line-clamp-2 leading-tight">
+			<div className="p-2">
+				<div className="text-xs text-zinc-200 line-clamp-2 leading-tight">
 					{video.title}
 				</div>
-				<div className="text-[10px] text-zinc-500 mt-0.5 truncate">
+				<div className="text-[10px] text-zinc-500 mt-1 truncate">
 					{video.channel}
+				</div>
+			</div>
+		</button>
+	);
+}
+
+function SimilarCard({
+	game,
+	installed,
+	onClick,
+}: {
+	game: LibraryGame;
+	installed: InstalledIndex | null;
+	onClick: () => void;
+}) {
+	const isInstalledHere =
+		installed !== null && installed.steam.includes(game.appid);
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+		>
+			<div className="relative">
+				<img
+					src={steamImg(game.appid, "library_capsule")}
+					alt={game.name}
+					loading="lazy"
+					onError={(e) => {
+						if (game.header_image && e.currentTarget.src !== game.header_image) {
+							e.currentTarget.src = game.header_image;
+						}
+					}}
+					className="w-full aspect-[2/3] object-cover bg-zinc-800"
+				/>
+				{isInstalledHere && (
+					<span className="absolute top-1.5 left-1.5 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
+						Installed
+					</span>
+				)}
+			</div>
+			<div className="p-2">
+				<div className="text-xs font-medium line-clamp-2 leading-tight min-h-[2rem]">
+					{game.name}
 				</div>
 			</div>
 		</button>

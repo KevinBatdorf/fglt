@@ -35,6 +35,22 @@ export function curateRoutes(raw: postgres.Sql) {
 			positive, negative, owners_estimate,
 			hltb_main, hltb_extra, metacritic
 		`;
+		// Steam treats benchmark/creator-tool apps as "games" with genres like
+		// Utilities. Exclude them everywhere we surface "what to play".
+		const NON_GAME_GENRES = [
+			"Utilities",
+			"Software Training",
+			"Web Publishing",
+			"Audio Production",
+			"Video Production",
+			"Animation & Modeling",
+			"Game Development",
+			"Photo Editing",
+			"Education",
+			"Design & Illustration",
+			"Documentary",
+		];
+		const isGame = raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`;
 		const platformsJoin = `
 			LEFT JOIN (
 				SELECT appid, array_agg(platform ORDER BY platform) AS platforms
@@ -44,20 +60,26 @@ export function curateRoutes(raw: postgres.Sql) {
 		const cardSelect = (ns = 'g') =>
 			raw`${raw.unsafe(cardCols.replace(/(\w+)/g, `${ns}.$1`))}, COALESCE(po.platforms, ARRAY[]::text[]) AS platforms`;
 
-		// Continue playing
+		// Continue playing — only real games
 		const continuePlaying = await raw`
 			SELECT ${cardSelect()}
 			FROM games g ${raw.unsafe(platformsJoin)}
-			WHERE g.playtime_2wk > 0
+			WHERE g.playtime_2wk > 0 AND ${isGame}
 			ORDER BY g.playtime_2wk DESC, g.last_played DESC NULLS LAST
 			LIMIT ${limit}
 		`;
 
-		// Find the seeds for the "because you" sections.
+		// Find the seeds for the "because you" sections — exclude utilities so
+		// we don't anchor recommendations on benchmarks.
 		const recentSeed = continuePlaying[0] ?? null;
 
-		const [obsessionSeed] =
-			await raw`SELECT appid, name, header_image, embedding FROM games WHERE playtime_min > 0 ORDER BY playtime_min DESC NULLS LAST LIMIT 1`;
+		const [obsessionSeed] = await raw`
+			SELECT g.appid, g.name, g.header_image, g.embedding
+			FROM games g
+			WHERE g.playtime_min > 0 AND ${isGame}
+			ORDER BY g.playtime_min DESC NULLS LAST
+			LIMIT 1
+		`;
 
 		async function similarByAppid(appid: number) {
 			const [seed] = await raw`
@@ -68,7 +90,7 @@ export function curateRoutes(raw: postgres.Sql) {
 			return await raw`
 				SELECT ${cardSelect()}, 1 - (g.embedding <=> ${vec}::vector) AS similarity
 				FROM games g ${raw.unsafe(platformsJoin)}
-				WHERE g.embedding IS NOT NULL AND g.appid <> ${appid}
+				WHERE g.embedding IS NOT NULL AND g.appid <> ${appid} AND ${isGame}
 				ORDER BY g.embedding <=> ${vec}::vector ASC
 				LIMIT ${limit}
 			`;
@@ -100,6 +122,7 @@ export function curateRoutes(raw: postgres.Sql) {
 				AND g.positive IS NOT NULL
 				AND g.positive + COALESCE(g.negative, 0) >= 200
 				AND (g.positive::float / NULLIF(g.positive + COALESCE(g.negative, 0), 0)) >= 0.80
+				AND ${isGame}
 			ORDER BY g.appid ASC
 		`;
 		const gameOfTheDay = goodPool.length > 0
@@ -110,7 +133,7 @@ export function curateRoutes(raw: postgres.Sql) {
 		const picksTonight = await raw`
 			SELECT ${cardSelect()}
 			FROM games g ${raw.unsafe(platformsJoin)}
-			WHERE g.playtime_min = 0 AND g.header_image IS NOT NULL
+			WHERE g.playtime_min = 0 AND g.header_image IS NOT NULL AND ${isGame}
 			ORDER BY random()
 			LIMIT 6
 		`;
@@ -123,6 +146,7 @@ export function curateRoutes(raw: postgres.Sql) {
 				AND g.hltb_main IS NOT NULL
 				AND g.hltb_main <= 5
 				AND g.hltb_main > 0
+				AND ${isGame}
 			ORDER BY g.hltb_main ASC, g.positive DESC NULLS LAST
 			LIMIT ${limit}
 		`;
@@ -135,6 +159,7 @@ export function curateRoutes(raw: postgres.Sql) {
 				AND g.positive IS NOT NULL
 				AND (g.positive + COALESCE(g.negative, 0)) BETWEEN 50 AND 5000
 				AND (g.positive::float / NULLIF(g.positive + COALESCE(g.negative, 0), 0)) >= 0.90
+				AND ${isGame}
 			ORDER BY (g.positive::float / NULLIF(g.positive + COALESCE(g.negative, 0), 0)) DESC,
 			         g.positive DESC
 			LIMIT ${limit}
@@ -144,7 +169,7 @@ export function curateRoutes(raw: postgres.Sql) {
 		const trending = await raw`
 			SELECT ${cardSelect()}
 			FROM games g ${raw.unsafe(platformsJoin)}
-			WHERE g.ccu IS NOT NULL AND g.ccu > 0
+			WHERE g.ccu IS NOT NULL AND g.ccu > 0 AND ${isGame}
 			ORDER BY g.ccu DESC
 			LIMIT ${limit}
 		`;

@@ -52,7 +52,7 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			<Vibes vibes={data.by_vibe} onPick={onPickVibe} />
 
 			{data.continue_playing.length > 0 && (
-				<Row
+				<Section
 					title="Continue playing"
 					subtitle="Recent activity in your library"
 					games={data.continue_playing}
@@ -62,7 +62,7 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.because_recently && data.because_recently.recs.length > 0 && (
-				<Row
+				<Section
 					title={`Because you've been playing ${data.because_recently.seed.name}`}
 					subtitle="Vector-similar games you also own"
 					games={data.because_recently.recs}
@@ -72,9 +72,9 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.because_obsession && data.because_obsession.recs.length > 0 && (
-				<Row
+				<Section
 					title={`Because you've put hours into ${data.because_obsession.seed.name}`}
-					subtitle="The deep-cut similars across your collection"
+					subtitle="Deep-cut similars across your collection"
 					games={data.because_obsession.recs}
 					installed={installed}
 					onSelect={onSelectGame}
@@ -82,7 +82,7 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.picks_tonight.length > 0 && (
-				<Row
+				<Section
 					title="Picks for tonight"
 					subtitle="Random unplayed games — refresh the page for a new draw"
 					games={data.picks_tonight}
@@ -92,7 +92,7 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.quick_wins.length > 0 && (
-				<Row
+				<Section
 					title="Quick wins"
 					subtitle="Unplayed and beatable in under 5 hours"
 					games={data.quick_wins}
@@ -102,7 +102,7 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.hidden_gems.length > 0 && (
-				<Row
+				<Section
 					title="Hidden gems"
 					subtitle="≥90% positive · fewer than 5,000 reviews · unplayed"
 					games={data.hidden_gems}
@@ -112,9 +112,9 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 			)}
 
 			{data.trending.length > 0 && (
-				<Row
+				<Section
 					title="Trending in your library"
-					subtitle="Sorted by peak concurrent users — what the world is playing"
+					subtitle="Sorted by peak concurrent users"
 					games={data.trending}
 					installed={installed}
 					onSelect={onSelectGame}
@@ -135,18 +135,17 @@ function HeroPick({
 		game.positive && game.negative !== null
 			? Math.round((game.positive / (game.positive + (game.negative ?? 0))) * 100)
 			: null;
+	const releaseYear =
+		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+	const topGenres = game.genres?.slice(0, 3).join(" / ") ?? "";
 	return (
-		<section
-			aria-labelledby="game-of-day"
-			className="relative overflow-hidden rounded-xl border border-zinc-800"
-		>
+		<section className="relative overflow-hidden rounded-xl border border-zinc-800">
 			<div className="absolute inset-0">
 				<img
 					src={steamImg(game.appid, "library_hero")}
 					alt=""
 					className="w-full h-full object-cover opacity-50"
 					onError={(e) => {
-						// Fall back to header_image if library_hero doesn't exist
 						const img = e.currentTarget;
 						if (game.header_image && img.src !== game.header_image) {
 							img.src = game.header_image;
@@ -159,7 +158,7 @@ function HeroPick({
 				<div className="text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-bold mb-3">
 					Game of the day
 				</div>
-				<h2 id="game-of-day" className="text-3xl lg:text-4xl font-bold mb-3 leading-tight">
+				<h2 className="text-3xl lg:text-4xl font-bold mb-3 leading-tight">
 					{game.name}
 				</h2>
 				{game.short_desc && (
@@ -167,7 +166,9 @@ function HeroPick({
 						{game.short_desc}
 					</p>
 				)}
-				<div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400 mb-5 tabular-nums">
+				<div className="flex flex-wrap items-center gap-3 text-xs text-zinc-300 mb-5 tabular-nums">
+					{releaseYear && <span>{releaseYear}</span>}
+					{topGenres && <span>{topGenres}</span>}
 					{game.platforms.map((p) => (
 						<span
 							key={p}
@@ -219,7 +220,7 @@ function Vibes({
 	);
 }
 
-function Row({
+function Section({
 	title,
 	subtitle,
 	games,
@@ -235,9 +236,9 @@ function Row({
 	return (
 		<section>
 			<SectionHeader title={title} subtitle={subtitle} />
-			<div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
-				{games.map((g) => (
-					<MiniCard
+			<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+				{games.slice(0, 6).map((g) => (
+					<TileCard
 						key={g.appid}
 						game={g}
 						installed={installed}
@@ -266,7 +267,7 @@ function SectionHeader({
 	);
 }
 
-function MiniCard({
+function TileCard({
 	game,
 	installed,
 	onSelect,
@@ -277,11 +278,17 @@ function MiniCard({
 }) {
 	const isInstalled =
 		installed !== null && installed.steam.includes(game.appid);
+	const positivePct =
+		game.positive && game.negative !== null
+			? Math.round((game.positive / (game.positive + (game.negative ?? 0))) * 100)
+			: null;
+	const releaseYear =
+		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
 	return (
 		<button
 			type="button"
 			onClick={onSelect}
-			className="snap-start shrink-0 w-[200px] text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-colors"
+			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
 		>
 			<div className="relative">
 				<img
@@ -293,23 +300,28 @@ function MiniCard({
 							e.currentTarget.src = game.header_image;
 						}
 					}}
-					className="w-full aspect-[2/3] object-cover bg-zinc-800"
+					className="w-full aspect-[2/3] object-cover bg-zinc-800 group-hover:scale-[1.02] transition-transform"
 				/>
 				{isInstalled && (
 					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
 						Installed
 					</span>
 				)}
-				<div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-zinc-900 via-zinc-900/60 to-transparent" />
+				{releaseYear && (
+					<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
+						{releaseYear}
+					</span>
+				)}
 			</div>
 			<div className="p-2.5">
 				<div className="text-xs font-medium text-zinc-100 line-clamp-2 leading-tight min-h-[2.25rem]">
 					{game.name}
 				</div>
-				<div className="mt-1.5 flex items-center gap-2 text-[10px] text-zinc-500 tabular-nums">
-					{game.hltb_main !== null && <span>{game.hltb_main}h</span>}
+				<div className="mt-1.5 flex items-center gap-2 text-[10px] text-zinc-500 tabular-nums flex-wrap">
+					{game.hltb_main !== null && <span>{game.hltb_main}h main</span>}
+					{positivePct !== null && <span>{positivePct}% positive</span>}
 					{game.playtime_min > 0 && (
-						<span>· played {Math.round(game.playtime_min / 60)}h</span>
+						<span>{Math.round(game.playtime_min / 60)}h played</span>
 					)}
 				</div>
 			</div>
