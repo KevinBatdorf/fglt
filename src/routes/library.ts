@@ -120,12 +120,19 @@ export function libraryRoutes(raw: postgres.Sql) {
 			WHERE appid = ${appid}
 			ORDER BY rank ASC
 		`;
+		const lists = await raw`
+			SELECT l.id, l.slug, l.name, l.emoji, l.is_system, lg.note, lg.added_at
+			FROM list_games lg
+			JOIN lists l ON l.id = lg.list_id
+			WHERE lg.appid = ${appid}
+			ORDER BY l.is_system DESC, l.created_at ASC
+		`;
 		const platforms = ownership.map((o) => o.platform as string);
 		const { embedding: _emb, search: _s, ...rest } = game as Record<
 			string,
 			unknown
 		>;
-		return c.json({ ...rest, platforms, ownership, tags, similar, videos });
+		return c.json({ ...rest, platforms, ownership, tags, similar, videos, lists });
 	});
 
 	return app;

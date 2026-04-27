@@ -3,8 +3,10 @@ import { cors } from 'hono/cors';
 import { raw } from './db';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
+import { curateRoutes } from './routes/curate';
 import { enrichRoutes } from './routes/enrich';
 import { libraryRoutes } from './routes/library';
+import { listsRoutes } from './routes/lists';
 import { mcpRoutes } from './routes/mcp';
 import { refreshRoutes } from './routes/refresh';
 import { similarRoutes } from './routes/similar';
@@ -32,6 +34,8 @@ app.route('/', statsRoutes(raw));
 app.route('/', syncRoutes(raw));
 app.route('/', enrichRoutes(raw));
 app.route('/', refreshRoutes(raw));
+app.route('/', curateRoutes(raw));
+app.route('/', listsRoutes(raw));
 mcpRoutes(app);
 
 app.get('/', (c) =>
@@ -44,6 +48,7 @@ app.get('/', (c) =>
 			'GET  /games/:appid',
 			'POST /games/:appid/refresh   (re-fetch every external source)',
 			'GET  /similar?appid=  | ?q=  &platform=&max_playtime=&min_positive_pct=&limit=',
+			'GET  /curate                 (home dashboard: continue/recs/random/etc.)',
 			'GET  /stats',
 			'POST /sync',
 			'GET  /mcp           (discovery)',

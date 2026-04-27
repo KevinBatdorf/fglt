@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { GameDetail } from "./GameDetail";
-import { type LibraryGame, type Stats, api } from "./lib/api";
+import { Home } from "./Home";
+import { type LibraryGame, type Stats, api, steamImg } from "./lib/api";
 import { rpc } from "./lib/rpc";
 import type { InstalledIndex, Platform } from "../shared/types";
 
@@ -17,7 +18,6 @@ function App() {
 
 	useEffect(() => {
 		api.stats().then(setStats).catch((e) => setError(`Stats failed: ${e.message}`));
-		// Pull installed index from main process via RPC
 		rpc.request
 			.getInstalledIndex({})
 			.then(setInstalled)
@@ -29,6 +29,7 @@ function App() {
 		const q = query.trim();
 		if (q.length === 0 && !platformFilter && !unplayedOnly) {
 			setResults([]);
+			setLoading(false);
 			return;
 		}
 		setLoading(true);
@@ -50,19 +51,29 @@ function App() {
 		return () => ctrl.abort();
 	}, [query, platformFilter, unplayedOnly]);
 
-	const showResults = results.length > 0 || loading;
+	const browsing = query.trim().length > 0 || platformFilter || unplayedOnly;
 
 	return (
-		<div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
-			<header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-				<div className="px-6 py-4 flex items-center gap-4">
-					<div className="text-xl font-bold tracking-tight">SEG</div>
+		<div className="min-h-screen bg-zinc-950 text-zinc-100">
+			<header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
+				<div className="px-6 py-4 flex items-center gap-4 flex-wrap">
+					<button
+						type="button"
+						onClick={() => {
+							setQuery("");
+							setPlatformFilter("");
+							setUnplayedOnly(false);
+						}}
+						className="text-xl font-bold tracking-tight hover:text-emerald-400 transition-colors"
+					>
+						SEG
+					</button>
 					<input
 						type="text"
 						placeholder="Search your library — vibe queries work too"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						className="flex-1 max-w-2xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+						className="flex-1 min-w-[260px] max-w-2xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
 					/>
 					<FilterChips
 						platform={platformFilter}
@@ -75,42 +86,44 @@ function App() {
 				{stats && <StatsBar stats={stats} installed={installed} />}
 			</header>
 
-			<div className="flex-1 flex overflow-hidden">
-				<main className="flex-1 overflow-y-auto px-6 py-6">
-					{error && (
-						<div className="mb-4 p-3 rounded-lg border border-red-900 bg-red-950/40 text-red-300 text-sm">
-							{error}
-						</div>
-					)}
-
-					{!showResults ? (
-						<EmptyHero stats={stats} installed={installed} />
-					) : loading && results.length === 0 ? (
-						<div className="text-zinc-500 text-sm">Searching…</div>
-					) : results.length === 0 ? (
-						<div className="text-zinc-500 text-sm">No matches.</div>
-					) : (
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-							{results.map((g) => (
-								<GameCard
-									key={g.appid}
-									game={g}
-									installed={installed}
-									selected={g.appid === selectedAppid}
-									onSelect={() => setSelectedAppid(g.appid)}
-								/>
-							))}
-						</div>
-					)}
-				</main>
-				{selectedAppid !== null && (
-					<GameDetail
-						appid={selectedAppid}
-						installed={installed}
-						onClose={() => setSelectedAppid(null)}
-					/>
+			<main className="px-6 py-6">
+				{error && (
+					<div className="mb-4 p-3 rounded-lg border border-red-900 bg-red-950/40 text-red-300 text-sm">
+						{error}
+					</div>
 				)}
-			</div>
+
+				{!browsing ? (
+					<Home
+						installed={installed}
+						onSelectGame={setSelectedAppid}
+						onPickVibe={(q) => setQuery(q)}
+					/>
+				) : loading && results.length === 0 ? (
+					<div className="text-zinc-500 text-sm">Searching…</div>
+				) : results.length === 0 ? (
+					<div className="text-zinc-500 text-sm">No matches.</div>
+				) : (
+					<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+						{results.map((g) => (
+							<GameCard
+								key={g.appid}
+								game={g}
+								installed={installed}
+								onSelect={() => setSelectedAppid(g.appid)}
+							/>
+						))}
+					</div>
+				)}
+			</main>
+
+			{selectedAppid !== null && (
+				<GameDetail
+					appid={selectedAppid}
+					installed={installed}
+					onClose={() => setSelectedAppid(null)}
+				/>
+			)}
 		</div>
 	);
 }
@@ -130,7 +143,7 @@ function FilterChips({
 }) {
 	const platforms: Platform[] = ["steam", "epic", "gog"];
 	return (
-		<div className="flex items-center gap-1.5">
+		<div className="flex items-center gap-1.5 flex-wrap">
 			{platforms.map((p) => {
 				const active = platform === p;
 				const count = stats?.platforms[p];
@@ -180,7 +193,7 @@ function StatsBar({
 		? installed.steam.length + installed.epic.length + installed.gog.length
 		: 0;
 	return (
-		<div className="px-6 pb-3 text-[11px] text-zinc-500 tabular-nums flex items-center gap-4">
+		<div className="px-6 pb-3 text-[11px] text-zinc-500 tabular-nums flex items-center gap-4 flex-wrap">
 			<span>{stats.total.toLocaleString()} games</span>
 			<span className="opacity-50">·</span>
 			<span>{stats.unplayed.toLocaleString()} unplayed</span>
@@ -199,70 +212,18 @@ function StatsBar({
 	);
 }
 
-function EmptyHero({
-	stats,
-	installed,
-}: {
-	stats: Stats | null;
-	installed: InstalledIndex | null;
-}) {
-	if (!stats) {
-		return <div className="text-zinc-500 text-sm">Connecting to API…</div>;
-	}
-	const installedTotal = installed
-		? installed.steam.length + installed.epic.length + installed.gog.length
-		: 0;
-	return (
-		<div className="max-w-3xl mx-auto pt-12">
-			<h1 className="text-3xl font-bold mb-2">Your library</h1>
-			<p className="text-zinc-400 mb-1">
-				{stats.total.toLocaleString()} games across{" "}
-				{Object.keys(stats.platforms).length} storefronts ·{" "}
-				{stats.unplayed.toLocaleString()} unplayed ·{" "}
-				{stats.multi_platform} owned on multiple stores
-			</p>
-			{installedTotal > 0 && (
-				<p className="text-zinc-500 text-sm mb-8">
-					{installedTotal} installed on this machine
-				</p>
-			)}
-			<p className="text-sm text-zinc-500 mt-8">
-				Try:{" "}
-				<button
-					type="button"
-					onClick={() => null}
-					className="font-mono text-zinc-300"
-				>
-					indie first person horror
-				</button>
-				{" · "}
-				<span className="font-mono text-zinc-300">cozy puzzle with story</span>
-				{" · "}
-				<span className="font-mono text-zinc-300">cyberpunk dystopia</span>
-			</p>
-		</div>
-	);
-}
-
 function GameCard({
 	game,
 	installed,
-	selected,
 	onSelect,
 }: {
 	game: LibraryGame;
 	installed: InstalledIndex | null;
-	selected: boolean;
 	onSelect: () => void;
 }) {
-	const isInstalledHere = game.platforms.some((p) => {
-		if (!installed) return false;
-		if (p === "steam") return installed.steam.includes(game.appid);
-		// For epic/gog we'd need external_ids, which the list endpoint doesn't
-		// include — so this card-level installed check is steam-only. The
-		// detail panel does the per-platform check accurately.
-		return false;
-	});
+	const isInstalledHere =
+		installed !== null &&
+		game.platforms.some((p) => p === "steam" && installed.steam.includes(game.appid));
 	const positivePct =
 		game.positive && game.negative !== null
 			? Math.round((game.positive / (game.positive + (game.negative ?? 0))) * 100)
@@ -271,22 +232,20 @@ function GameCard({
 		<button
 			type="button"
 			onClick={onSelect}
-			className={`text-left rounded-lg overflow-hidden border bg-zinc-900 transition-colors ${
-				selected
-					? "border-emerald-500"
-					: "border-zinc-800 hover:border-zinc-700"
-			}`}
+			className="text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-colors"
 		>
 			<div className="relative">
-				{game.header_image ? (
-					<img
-						src={game.header_image}
-						alt={game.name}
-						className="w-full aspect-[460/215] object-cover"
-					/>
-				) : (
-					<div className="w-full aspect-[460/215] bg-zinc-800" />
-				)}
+				<img
+					src={steamImg(game.appid, "library_capsule")}
+					alt={game.name}
+					loading="lazy"
+					onError={(e) => {
+						if (game.header_image && e.currentTarget.src !== game.header_image) {
+							e.currentTarget.src = game.header_image;
+						}
+					}}
+					className="w-full aspect-[2/3] object-cover bg-zinc-800"
+				/>
 				{isInstalledHere && (
 					<span className="absolute top-2 left-2 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
 						Installed
