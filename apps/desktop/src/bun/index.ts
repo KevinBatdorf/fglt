@@ -1,9 +1,9 @@
 import { BrowserWindow, Updater } from "electrobun/bun";
+import { defineSegRpc } from "./rpc";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
-// Check if Vite dev server is running for HMR
 async function getMainViewUrl(): Promise<string> {
 	const channel = await Updater.localInfo.channel();
 	if (channel === "dev") {
@@ -20,12 +20,13 @@ async function getMainViewUrl(): Promise<string> {
 	return "views://mainview/index.html";
 }
 
-// Create the main application window
 const url = await getMainViewUrl();
+const rpc = defineSegRpc();
 
 const mainWindow = new BrowserWindow({
 	title: "SEG",
 	url,
+	rpc,
 	frame: {
 		width: 1280,
 		height: 820,
