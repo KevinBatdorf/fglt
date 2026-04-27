@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_discover
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: Vibe and keyword searches across the library — answer "what do I have that fits this mood?"
+headers: []
+name: Discover
+sortPriority: 1.0

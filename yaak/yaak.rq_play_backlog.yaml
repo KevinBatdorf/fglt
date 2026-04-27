@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_play_backlog
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_play
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Every game in the library you've never started (playtime_min = 0). Each result includes hltb_main and metacritic so the client can pick a quick high-rated one.
+headers: []
+method: GET
+name: 'Full unplayed pile'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: unplayed
+  value: '1'
+- enabled: true
+  name: limit
+  value: '100'

@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_multi_stats
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_multi
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Headline counts including platforms (per-storefront breakdown) and multi_platform (games owned on >1 store). The fastest way to see how the cross-store mapping shook out.'
+headers: []
+method: GET
+name: 'Stats: platform breakdown'
+sortPriority: 3.0
+url: ${[ baseUrl ]}/stats
+urlParameters: []

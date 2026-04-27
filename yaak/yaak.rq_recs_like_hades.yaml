@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_recs_like_hades
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_recs
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Vector cosine similarity to Hades (1145360) — answers "what in my library plays like Hades?" Each result includes a `similarity` score (0-1).'
+headers: []
+method: GET
+name: "What's like Hades I own"
+sortPriority: 1.0
+url: ${[ baseUrl ]}/similar
+urlParameters:
+- enabled: true
+  name: appid
+  value: '1145360'
+- enabled: true
+  name: limit
+  value: '15'

@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_discover_indie_unplayed
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_discover
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Genre-exact filter combined with the unplayed flag — surface untouched indies in the backlog.
+headers: []
+method: GET
+name: 'Untouched indies'
+sortPriority: 4.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: genre
+  value: Indie
+- enabled: true
+  name: unplayed
+  value: '1'
+- enabled: true
+  name: limit
+  value: '25'

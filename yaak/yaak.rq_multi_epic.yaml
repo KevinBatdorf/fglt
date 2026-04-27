@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_multi_epic
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_multi
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Every game owned via Epic that has a Steam appid match. Most are AAA + Epic-exclusive freebies that also exist on Steam.
+headers: []
+method: GET
+name: 'Epic library'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: platform
+  value: epic
+- enabled: true
+  name: limit
+  value: '100'

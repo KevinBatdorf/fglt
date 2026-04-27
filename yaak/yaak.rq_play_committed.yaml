@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_play_committed
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_play
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Games where you've sunk 20+ hours — your real loves, sortable by playtime to surface obsessions.
+headers: []
+method: GET
+name: 'Deeply played (20h+)'
+sortPriority: 4.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: min_playtime
+  value: '1200'
+- enabled: true
+  name: limit
+  value: '50'

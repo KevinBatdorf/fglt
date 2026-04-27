@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_discover_cyberpunk
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_discover
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Atmosphere search — finds neon/dystopian/hacker-vibe games regardless of the literal word "cyberpunk".
+headers: []
+method: GET
+name: 'Vibe: cyberpunk dystopia'
+sortPriority: 3.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: q
+  value: cyberpunk dystopian neon hacker
+- enabled: true
+  name: limit
+  value: '12'

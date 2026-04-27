@@ -1,0 +1,23 @@
+type: http_request
+model: http_request
+id: rq_mcp_unplayed
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {"jsonrpc":"2.0","method":"tools/call","params":{"name":"unplayed_pile","arguments":{"max_main_hours":8,"limit":30}},"id":1}
+bodyType: application/json
+description: 'unplayed_pile MCP tool — never-played games with HLTB main-story under 8 hours. The "I have an evening, what should I burn it on" query.'
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+method: POST
+name: 'unplayed_pile: short games'
+sortPriority: 5.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

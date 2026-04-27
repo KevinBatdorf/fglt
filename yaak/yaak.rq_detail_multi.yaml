@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_detail_multi
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_detail
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Wolfenstein: The New Order — the only game in this library owned on all three storefronts (Steam + Epic + GOG). Use to verify the `ownership` array surfaces every store with external_id, acquired_at, and per-platform playtime.'
+headers: []
+method: GET
+name: 'Tri-store detail (Wolfenstein TNO)'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/games/201810
+urlParameters: []

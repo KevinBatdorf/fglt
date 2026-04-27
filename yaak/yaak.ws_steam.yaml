@@ -1,0 +1,15 @@
+type: workspace
+model: workspace
+id: ws_steam
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+authentication: {}
+authenticationType: null
+description: Personal Steam library — search, recs, MCP
+headers: []
+name: Steam Library API
+encryptionKeyChallenge: null
+settingValidateCertificates: true
+settingFollowRedirects: true
+settingRequestTimeout: 0
+settingDnsOverrides: []

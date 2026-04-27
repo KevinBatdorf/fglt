@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_detail
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: Single-game deep dives — full enriched record with tags, similar games, and per-platform ownership.
+headers: []
+name: Game detail
+sortPriority: 4.0

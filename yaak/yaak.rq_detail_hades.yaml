@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_detail_hades
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_detail
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Hades — exemplary fully-enriched record: SteamSpy tags with vote counts, the "more like this" graph, hltb completion times, full descriptions, and the `ownership` + `platforms` fields.'
+headers: []
+method: GET
+name: 'Full record (Hades)'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/games/1145360
+urlParameters: []

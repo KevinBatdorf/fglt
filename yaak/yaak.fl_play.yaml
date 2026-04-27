@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_play
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: "What should I play next? Backlog filtering by playtime — never started, started but not finished, deeply played."
+headers: []
+name: What to play
+sortPriority: 2.0

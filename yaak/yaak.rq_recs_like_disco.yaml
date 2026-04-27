@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_recs_like_disco
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_recs
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Recommendations based on Disco Elysium (632470) — finds story-heavy, dialog-driven RPGs nearby in embedding space. Quality threshold filters out low-rated noise.'
+headers: []
+method: GET
+name: "Like Disco Elysium (highly rated)"
+sortPriority: 2.0
+url: ${[ baseUrl ]}/similar
+urlParameters:
+- enabled: true
+  name: appid
+  value: '632470'
+- enabled: true
+  name: min_positive_pct
+  value: '85'
+- enabled: true
+  name: limit
+  value: '15'

@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_play_started
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_play
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Games you tried (1+ minute) but didn't really play (under 100 min). Candidates for "give it another shot" or "uninstall and admit defeat".
+headers: []
+method: GET
+name: 'Started but not finished'
+sortPriority: 3.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: min_playtime
+  value: '1'
+- enabled: true
+  name: max_playtime
+  value: '100'
+- enabled: true
+  name: limit
+  value: '40'

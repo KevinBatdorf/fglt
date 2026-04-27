@@ -1,0 +1,9 @@
+node_modules
+.env
+.env.local
+data
+bun.lock
+*.log
+
+# Claude Code per-user permissions
+.claude/settings.local.json

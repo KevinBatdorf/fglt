@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: steam-postgres
+    shm_size: 1g
+    environment:
+      POSTGRES_USER: steam
+      POSTGRES_PASSWORD: steam
+      POSTGRES_DB: steam
+    volumes:
+      - steam-pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-5532}:5432"
+    restart: unless-stopped
+
+  api:
+    build: .
+    container_name: steam-api
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@steam-postgres:5432/steam'
+      PORT: '${PORT:-3110}'
+      STEAM_API_KEY: '${STEAM_API_KEY:-}'
+      STEAM_ID: '${STEAM_ID:-}'
+      OLLAMA_URL: '${OLLAMA_URL:-http://host.docker.internal:11434}'
+      OLLAMA_EMBED_MODEL: '${OLLAMA_EMBED_MODEL:-nomic-embed-text}'
+      YOUTUBE_API_KEY: '${YOUTUBE_API_KEY:-}'
+    command: bun run /app/src/index.ts
+    ports:
+      - '${PORT:-3110}:${PORT:-3110}'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  syncer:
+    build: .
+    container_name: steam-syncer
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@steam-postgres:5432/steam'
+      STEAM_API_KEY: '${STEAM_API_KEY:-}'
+      STEAM_ID: '${STEAM_ID:-}'
+      SYNC_CRON: '${SYNC_CRON:-0 6 * * *}'
+    command: sh -c 'bun run /app/scripts/sync-owned.ts || true; echo "$$SYNC_CRON /usr/local/bin/bun run /app/scripts/sync-owned.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  enricher:
+    build: .
+    container_name: steam-enricher
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@steam-postgres:5432/steam'
+      OLLAMA_URL: '${OLLAMA_URL:-http://host.docker.internal:11434}'
+      OLLAMA_EMBED_MODEL: '${OLLAMA_EMBED_MODEL:-nomic-embed-text}'
+      ENRICH_BATCH: '${ENRICH_BATCH:-50}'
+      ENRICH_CRON: '${ENRICH_CRON:-*/15 * * * *}'
+    command: sh -c 'bun run /app/scripts/enrich.ts || true; bun run /app/scripts/embed.ts || true; printf "%s\n" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/enrich.ts" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/embed.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  youtube-syncer:
+    build: .
+    container_name: steam-youtube-syncer
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@steam-postgres:5432/steam'
+      YOUTUBE_API_KEY: '${YOUTUBE_API_KEY:-}'
+      YOUTUBE_BATCH: '${YOUTUBE_BATCH:-120}'
+      YOUTUBE_PER_GAME: '${YOUTUBE_PER_GAME:-10}'
+      YOUTUBE_DELAY_MS: '${YOUTUBE_DELAY_MS:-300}'
+      YOUTUBE_CRON: '${YOUTUBE_CRON:-30 6 * * *}'
+    command: sh -c 'bun run /app/scripts/sync-youtube.ts || true; echo "$$YOUTUBE_CRON /usr/local/bin/bun run /app/scripts/sync-youtube.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+volumes:
+  steam-pgdata:

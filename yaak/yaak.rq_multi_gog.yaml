@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_multi_gog
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_multi
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Every game owned on GOG that's also matched to a Steam appid. Shows the canonical-appid model in action — DRM-free retro games that exist on both stores.
+headers: []
+method: GET
+name: 'GOG library'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: platform
+  value: gog
+- enabled: true
+  name: limit
+  value: '100'

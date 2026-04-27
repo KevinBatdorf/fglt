@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_play_recent
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_play
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Games with any playtime — client should re-sort by playtime_2wk to find what you've been playing this fortnight.
+headers: []
+method: GET
+name: 'Recently active games'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: min_playtime
+  value: '1'
+- enabled: true
+  name: limit
+  value: '50'

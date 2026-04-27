@@ -1,0 +1,30 @@
+type: http_request
+model: http_request
+id: rq_recs_quick_polished
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_recs
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Vibe + multiple filters: short polished games (sub-10h Steam playtime cap on YOUR playtime), 85%+ positive review ratio. The cross-section is "high quality and won''t take over my life".'
+headers: []
+method: GET
+name: 'Short, polished, well-rated'
+sortPriority: 4.0
+url: ${[ baseUrl ]}/similar
+urlParameters:
+- enabled: true
+  name: q
+  value: cozy short polished single-session
+- enabled: true
+  name: max_playtime
+  value: '600'
+- enabled: true
+  name: min_positive_pct
+  value: '85'
+- enabled: true
+  name: limit
+  value: '15'

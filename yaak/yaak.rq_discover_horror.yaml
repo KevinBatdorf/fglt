@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_discover_horror
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_discover
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Hybrid keyword + vector search for the indie first-person horror you actually own. Tag filter narrows to Horror-tagged games.'
+headers: []
+method: GET
+name: 'Vibe: indie first person horror'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: q
+  value: indie first person horror
+- enabled: true
+  name: tag
+  value: Horror
+- enabled: true
+  name: limit
+  value: '15'

@@ -1,0 +1,8 @@
+{
+	"name": "steam-library",
+	"description": "Search, browse, and get recommendations from your owned Steam library — with appdetails, SteamSpy tags, HLTB completion times, and semantic vector search via a self-hosted API.",
+	"version": "0.1.0",
+	"author": {
+		"name": "klanker"
+	}
+}

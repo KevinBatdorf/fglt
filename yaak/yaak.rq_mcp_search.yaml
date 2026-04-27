@@ -1,0 +1,23 @@
+type: http_request
+model: http_request
+id: rq_mcp_search
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_library","arguments":{"query":"indie first person horror","tag":"Horror","limit":10}},"id":1}
+bodyType: application/json
+description: 'Same horror search as the Discover folder but routed through the MCP tool (search_library). Useful for verifying tool wiring and seeing the `platforms` field in the JSON-RPC response.'
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+method: POST
+name: 'search_library: horror'
+sortPriority: 3.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

@@ -1,0 +1,23 @@
+type: http_request
+model: http_request
+id: rq_mcp_tools
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {"jsonrpc":"2.0","method":"tools/list","id":1}
+bodyType: application/json
+description: List the MCP tools the server exposes. Same surface Claude Code calls when planning which tool to invoke.
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+method: POST
+name: 'tools/list'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

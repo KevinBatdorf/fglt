@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_discover_cozy
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_discover
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Pure semantic-vector search — no keyword matches the phrase, but embeddings find games whose tags + descriptions cluster near "cozy".
+headers: []
+method: GET
+name: 'Vibe: cozy puzzle with story'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: q
+  value: cozy puzzle game with story
+- enabled: true
+  name: limit
+  value: '12'

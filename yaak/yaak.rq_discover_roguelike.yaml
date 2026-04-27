@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_discover_roguelike
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_discover
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: SteamSpy user-tag filter (partial-match ILIKE) — pulls every Roguelike-tagged game in the library, sorted alphabetically.
+headers: []
+method: GET
+name: 'Tag: Roguelike'
+sortPriority: 5.0
+url: ${[ baseUrl ]}/library
+urlParameters:
+- enabled: true
+  name: tag
+  value: Roguelike
+- enabled: true
+  name: limit
+  value: '50'

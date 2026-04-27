@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_recs_vibe
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_recs
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Embed a free-text vibe query directly (no seed game required). Uses Ollama on the host to encode the phrase, then ranks by cosine similarity.'
+headers: []
+method: GET
+name: 'Vibe rec: existential dread RPG'
+sortPriority: 3.0
+url: ${[ baseUrl ]}/similar
+urlParameters:
+- enabled: true
+  name: q
+  value: existential dread story-driven RPG
+- enabled: true
+  name: limit
+  value: '15'

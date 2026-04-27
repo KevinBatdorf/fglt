@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_multi
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: "Cross-platform queries — Steam vs Epic vs GOG, showing how the same canonical appid surfaces across storefronts."
+headers: []
+name: Cross-platform
+sortPriority: 3.0

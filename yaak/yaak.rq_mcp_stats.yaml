@@ -1,0 +1,23 @@
+type: http_request
+model: http_request
+id: rq_mcp_stats
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_stats","arguments":{}},"id":1}
+bodyType: application/json
+description: 'get_stats via MCP — the platforms breakdown + multi_platform overlap surfaced through the tool.'
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+method: POST
+name: 'get_stats'
+sortPriority: 7.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

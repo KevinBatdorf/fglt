@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_mcp_discovery
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Public MCP discovery — the metadata Claude reads when you add the connector. No auth required.
+headers: []
+method: GET
+name: 'Discovery'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

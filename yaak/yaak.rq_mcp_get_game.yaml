@@ -1,0 +1,23 @@
+type: http_request
+model: http_request
+id: rq_mcp_get_game
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: fl_mcp
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_game","arguments":{"appid":201810}},"id":1}
+bodyType: application/json
+description: 'get_game on Wolfenstein TNO — the same tri-store record as the Cross-platform folder, fetched via MCP.'
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+method: POST
+name: 'get_game: Wolfenstein TNO'
+sortPriority: 6.0
+url: ${[ baseUrl ]}/mcp
+urlParameters: []

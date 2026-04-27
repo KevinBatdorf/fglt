@@ -1,0 +1,14 @@
+type: folder
+model: folder
+id: fl_recs
+createdAt: 2026-04-27T00:00:00
+updatedAt: 2026-04-27T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Recommendations
+sortPriority: 5.0
+description: Vector-similarity recommendations — "what's like X that I own", or vibe queries via embedding.
