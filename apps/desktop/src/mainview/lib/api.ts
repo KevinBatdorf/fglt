@@ -40,6 +40,8 @@ export interface LibraryGame {
 	hltb_extra: number | null;
 	metacritic: number | null;
 	platforms: Platform[];
+	/** Hybrid keyword+vector relevance, 0..1. Only present on /library?q= results. */
+	score?: number | null;
 }
 
 export interface LibraryResponse {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AllGames } from "./AllGames";
 import { Discover } from "./Discover";
 import { GameDetail } from "./GameDetail";
@@ -303,6 +303,8 @@ function MainView({
 	return null;
 }
 
+type SearchSort = "match" | "rating" | "popularity" | "playtime" | "year" | "name";
+
 function SearchResults({
 	query,
 	installed,
@@ -315,13 +317,15 @@ function SearchResults({
 	const [results, setResults] = useState<LibraryGame[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [sort, setSort] = useState<SearchSort>("match");
+	const [genre, setGenre] = useState<string>("");
 
 	useEffect(() => {
 		const ctrl = new AbortController();
 		setLoading(true);
 		setError(null);
 		api
-			.library({ q: query, limit: 90 }, ctrl.signal)
+			.library({ q: query, limit: 200 }, ctrl.signal)
 			.then((d) => setResults(d.results))
 			.catch((e) => {
 				if (e.name !== "AbortError") setError(e.message);
@@ -329,6 +333,44 @@ function SearchResults({
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
 	}, [query]);
+
+	const allGenres = useMemo(() => {
+		const set = new Set<string>();
+		for (const g of results) {
+			if (g.genres) for (const x of g.genres) set.add(x);
+		}
+		return [...set].sort();
+	}, [results]);
+
+	const visible = useMemo(() => {
+		let out = results;
+		if (genre) out = out.filter((g) => (g.genres ?? []).includes(genre));
+		if (sort === "match") return out; // already in relevance order from API
+		const sorted = [...out];
+		sorted.sort((a, b) => {
+			switch (sort) {
+				case "rating": {
+					const ra = ratingPct(a) ?? -1;
+					const rb = ratingPct(b) ?? -1;
+					return rb - ra;
+				}
+				case "popularity":
+					return (b.positive ?? 0) - (a.positive ?? 0);
+				case "playtime":
+					return (b.playtime_min ?? 0) - (a.playtime_min ?? 0);
+				case "year": {
+					const ya = Number(a.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
+					const yb = Number(b.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
+					return yb - ya;
+				}
+				case "name":
+					return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+				default:
+					return 0;
+			}
+		});
+		return sorted;
+	}, [results, sort, genre]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (loading && results.length === 0)
@@ -338,13 +380,51 @@ function SearchResults({
 
 	return (
 		<div>
-			<h1 className="text-lg font-semibold mb-4">
-				{results.length} {results.length === 1 ? "result" : "results"} for{" "}
-				<span className="text-zinc-300">"{query}"</span>
-			</h1>
-			<GameGrid games={results} installed={installed} onSelect={onSelect} />
+			<header className="mb-4 flex flex-wrap items-center gap-3">
+				<h1 className="text-lg font-semibold">
+					{visible.length} {visible.length === 1 ? "result" : "results"} for{" "}
+					<span className="text-zinc-300">"{query}"</span>
+				</h1>
+				<select
+					value={genre}
+					onChange={(e) => setGenre(e.target.value)}
+					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+				>
+					<option value="">All genres</option>
+					{allGenres.map((g) => (
+						<option key={g} value={g}>
+							{g}
+						</option>
+					))}
+				</select>
+				<select
+					value={sort}
+					onChange={(e) => setSort(e.target.value as SearchSort)}
+					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+				>
+					<option value="match">Sort: Match</option>
+					<option value="rating">Sort: Highest rated</option>
+					<option value="popularity">Sort: Most popular</option>
+					<option value="playtime">Sort: Most played</option>
+					<option value="year">Sort: Newest first</option>
+					<option value="name">Sort: A–Z</option>
+				</select>
+				<span className="ml-auto text-[11px] text-zinc-500 tabular-nums">
+					{sort === "match"
+						? "ranked by relevance"
+						: `${visible.length} of ${results.length}`}
+				</span>
+			</header>
+			<GameGrid games={visible} installed={installed} onSelect={onSelect} />
 		</div>
 	);
+}
+
+function ratingPct(g: { positive: number | null; negative: number | null }): number | null {
+	if (g.positive === null) return null;
+	const total = g.positive + (g.negative ?? 0);
+	if (total === 0) return null;
+	return Math.round((g.positive / total) * 100);
 }
 
 function FilterView({
@@ -514,6 +594,10 @@ function GameCard({
 			: null;
 	const releaseYear =
 		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+	const matchPct =
+		game.score !== undefined && game.score !== null
+			? Math.round(game.score * 100)
+			: null;
 	return (
 		<button
 			type="button"
@@ -533,11 +617,18 @@ function GameCard({
 						Installed
 					</span>
 				)}
-				{releaseYear && (
+				{matchPct !== null ? (
+					<span
+						className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-emerald-700/90 border border-emerald-600 text-white font-medium"
+						title="Hybrid keyword + semantic-vector relevance score"
+					>
+						{matchPct}% match
+					</span>
+				) : releaseYear ? (
 					<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
 						{releaseYear}
 					</span>
-				)}
+				) : null}
 			</div>
 			<div className="p-2.5">
 				<div className="text-xs font-medium text-zinc-100 line-clamp-2 leading-tight min-h-[2.25rem]">

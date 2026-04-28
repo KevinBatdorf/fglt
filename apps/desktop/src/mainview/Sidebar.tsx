@@ -138,11 +138,10 @@ export function Sidebar({
 						<button
 							type="button"
 							onClick={() => setCreatingList((v) => !v)}
-							className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 text-base leading-none"
+							className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
 							title={creatingList ? "Cancel" : "Create new list"}
-							aria-label={creatingList ? "Cancel new list" : "Create new list"}
 						>
-							{creatingList ? "×" : "+"}
+							{creatingList ? "Cancel" : "+ New"}
 						</button>
 					}
 				>

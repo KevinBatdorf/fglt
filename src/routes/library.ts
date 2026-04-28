@@ -57,13 +57,22 @@ export function libraryRoutes(raw: postgres.Sql) {
 			i === 0 ? cond : raw`${acc} AND ${cond}`,
 		);
 
+		// Hybrid score (0..1-ish): 0.6 * vector-similarity + 0.4 * ts_rank.
+		// FTS-only mode uses ts_rank by itself. Cast to float so postgres.js
+		// returns a JS number (the literal 0.6 makes Postgres choose `numeric`,
+		// which would arrive as a string).
+		const scoreExpr =
+			q.length === 0
+				? raw`NULL::float`
+				: vec
+					? raw`((0.6 * (1 - (g.embedding <=> ${vec}::vector)) +
+					    0.4 * COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0))::float)`
+					: raw`(COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0)::float)`;
+
 		const orderBy =
 			q.length === 0
 				? raw`ORDER BY g.name ASC`
-				: vec
-					? raw`ORDER BY (0.6 * (1 - (g.embedding <=> ${vec}::vector)) +
-				    0.4 * COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0)) DESC NULLS LAST`
-					: raw`ORDER BY ts_rank(g.search, websearch_to_tsquery('english', ${q})) DESC`;
+				: raw`ORDER BY score DESC NULLS LAST`;
 
 		const rows = await raw`
 			SELECT
@@ -73,7 +82,8 @@ export function libraryRoutes(raw: postgres.Sql) {
 				g.playtime_min, g.playtime_2wk, g.last_played,
 				g.positive, g.negative, g.owners_estimate,
 				g.hltb_main, g.hltb_extra, g.metacritic,
-				COALESCE(po.platforms, ARRAY[]::text[]) AS platforms
+				COALESCE(po.platforms, ARRAY[]::text[]) AS platforms,
+				${scoreExpr} AS score
 			FROM games g
 			LEFT JOIN (
 				SELECT appid, array_agg(platform ORDER BY platform) AS platforms
