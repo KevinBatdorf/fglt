@@ -5,9 +5,11 @@ import type { Platform } from "../shared/types";
 export type View =
 	| { kind: "home" }
 	| { kind: "search"; query: string }
-	| { kind: "filter"; what: "unplayed" | "recent" | "all" }
+	| { kind: "filter"; what: "all" | "unplayed" | "recently_played" | "recently_added" }
+	| { kind: "discover"; what: "trending" | "random" | "recommended" }
 	| { kind: "platform"; platform: Platform }
 	| { kind: "list"; slug: string }
+	| { kind: "settings" }
 	| { kind: "detail"; appid: number };
 
 interface Props {
@@ -26,6 +28,8 @@ export function Sidebar({
 	platformCounts,
 }: Props) {
 	const [lists, setLists] = useState<ListSummary[] | null>(null);
+	const [creatingList, setCreatingList] = useState(false);
+	const [newListName, setNewListName] = useState("");
 
 	useEffect(() => {
 		api.lists().then((d) => setLists(d.lists));
@@ -37,18 +41,28 @@ export function Sidebar({
 		}
 	}, [view]);
 
+	async function handleCreateList(navigateAfter: boolean) {
+		const name = newListName.trim();
+		if (!name) {
+			setCreatingList(false);
+			return;
+		}
+		try {
+			const created = await api.createList(name);
+			const refreshed = await api.lists();
+			setLists(refreshed.lists);
+			setNewListName("");
+			setCreatingList(false);
+			if (navigateAfter) {
+				onNavigate({ kind: "list", slug: created.slug });
+			}
+		} catch (e) {
+			console.error("create list failed:", e);
+		}
+	}
+
 	return (
 		<aside className="w-56 shrink-0 h-screen sticky top-0 border-r border-zinc-800 bg-zinc-925 flex flex-col">
-			<div className="px-4 py-4 border-b border-zinc-800">
-				<button
-					type="button"
-					onClick={() => onNavigate({ kind: "home" })}
-					className="text-lg font-bold tracking-tight hover:text-emerald-400 transition-colors"
-				>
-					SEG
-				</button>
-			</div>
-
 			<nav className="flex-1 overflow-y-auto py-3">
 				<Section title="Library">
 					<NavItem
@@ -64,16 +78,44 @@ export function Sidebar({
 						label="All games"
 					/>
 					<NavItem
+						active={view.kind === "discover" && view.what === "trending"}
+						onClick={() => onNavigate({ kind: "discover", what: "trending" })}
+						icon="🔥"
+						label="Trending"
+					/>
+					<NavItem
+						active={view.kind === "discover" && view.what === "recommended"}
+						onClick={() => onNavigate({ kind: "discover", what: "recommended" })}
+						icon="✨"
+						label="Recommended"
+					/>
+					<NavItem
+						active={view.kind === "discover" && view.what === "random"}
+						onClick={() => onNavigate({ kind: "discover", what: "random" })}
+						icon="🎲"
+						label="Random"
+					/>
+					<NavItem
 						active={view.kind === "filter" && view.what === "unplayed"}
 						onClick={() => onNavigate({ kind: "filter", what: "unplayed" })}
 						icon="📥"
 						label="Unplayed"
 					/>
 					<NavItem
-						active={view.kind === "filter" && view.what === "recent"}
-						onClick={() => onNavigate({ kind: "filter", what: "recent" })}
+						active={view.kind === "filter" && view.what === "recently_played"}
+						onClick={() =>
+							onNavigate({ kind: "filter", what: "recently_played" })
+						}
 						icon="🕒"
 						label="Recently played"
+					/>
+					<NavItem
+						active={view.kind === "filter" && view.what === "recently_added"}
+						onClick={() =>
+							onNavigate({ kind: "filter", what: "recently_added" })
+						}
+						icon="🆕"
+						label="Recently added"
 					/>
 				</Section>
 
@@ -90,7 +132,43 @@ export function Sidebar({
 					))}
 				</Section>
 
-				<Section title="Lists">
+				<Section
+					title="Lists"
+					action={
+						<button
+							type="button"
+							onClick={() => setCreatingList((v) => !v)}
+							className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 text-base leading-none"
+							title={creatingList ? "Cancel" : "Create new list"}
+							aria-label={creatingList ? "Cancel new list" : "Create new list"}
+						>
+							{creatingList ? "×" : "+"}
+						</button>
+					}
+				>
+					{creatingList && (
+						<div className="px-4 py-1.5">
+							<input
+								autoFocus
+								type="text"
+								value={newListName}
+								onChange={(e) => setNewListName(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") void handleCreateList(true);
+									if (e.key === "Escape") {
+										setCreatingList(false);
+										setNewListName("");
+									}
+								}}
+								onBlur={() => {
+									if (newListName.trim()) void handleCreateList(false);
+									else setCreatingList(false);
+								}}
+								placeholder="List name"
+								className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-600"
+							/>
+						</div>
+					)}
 					{lists?.map((l) => {
 						const active = view.kind === "list" && view.slug === l.slug;
 						return (
@@ -104,7 +182,7 @@ export function Sidebar({
 							/>
 						);
 					})}
-					{lists?.length === 0 && (
+					{lists?.length === 0 && !creatingList && (
 						<div className="px-4 py-1 text-xs text-zinc-600">No lists yet</div>
 					)}
 				</Section>
@@ -123,20 +201,30 @@ export function Sidebar({
 						}
 					>
 						{recentSearches.map((q) => {
-							const active = view.kind === "search" && view.query === q;
-							return (
-								<NavItem
-									key={q}
-									active={active}
-									onClick={() => onNavigate({ kind: "search", query: q })}
-									icon="🔎"
-									label={q}
-								/>
-							);
-						})}
+						const active = view.kind === "search" && view.query === q;
+						return (
+							<NavItem
+								key={q}
+								active={active}
+								onClick={() => onNavigate({ kind: "search", query: q })}
+								icon="🔎"
+								label={q}
+							/>
+						);
+					})}
 					</Section>
 				)}
 			</nav>
+
+			{/* Sticky bottom: Settings */}
+			<div className="border-t border-zinc-800">
+				<NavItem
+					active={view.kind === "settings"}
+					onClick={() => onNavigate({ kind: "settings" })}
+					icon="⚙"
+					label="Settings"
+				/>
+			</div>
 		</aside>
 	);
 }
@@ -151,14 +239,14 @@ function Section({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="mb-5">
-			<div className="px-4 py-1 flex items-center justify-between">
+		<div className="mb-4">
+			<div className="px-3 h-7 flex items-center justify-between gap-2">
 				<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
 					{title}
 				</h3>
 				{action}
 			</div>
-			<div className="mt-1 space-y-px">{children}</div>
+			<div className="space-y-px">{children}</div>
 		</div>
 	);
 }
@@ -180,13 +268,13 @@ function NavItem({
 		<button
 			type="button"
 			onClick={onClick}
-			className={`w-full px-4 py-1.5 flex items-center gap-2.5 text-sm text-left transition-colors ${
+			className={`w-full h-8 px-3 flex items-center gap-2.5 text-sm text-left transition-colors ${
 				active
 					? "bg-zinc-800 text-zinc-100"
 					: "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
 			}`}
 		>
-			<span className="w-4 text-center text-base leading-none">{icon}</span>
+			<span className="w-5 text-center text-sm leading-none">{icon}</span>
 			<span className="flex-1 truncate">{label}</span>
 			{count !== undefined && (
 				<span className="text-[10px] text-zinc-500 tabular-nums">{count}</span>

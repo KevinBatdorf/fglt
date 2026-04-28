@@ -20,7 +20,7 @@ export function libraryRoutes(raw: postgres.Sql) {
 		const minPlaytime = num(c.req.query('min_playtime'));
 		const maxPlaytime = num(c.req.query('max_playtime'));
 		const unplayed = c.req.query('unplayed') === '1';
-		const limit = clamp(num(c.req.query('limit')) ?? 50, 1, 200);
+		const limit = clamp(num(c.req.query('limit')) ?? 50, 1, 5000);
 		const offset = Math.max(0, num(c.req.query('offset')) ?? 0);
 		const sort = c.req.query('sort') || (q ? 'relevance' : 'name');
 

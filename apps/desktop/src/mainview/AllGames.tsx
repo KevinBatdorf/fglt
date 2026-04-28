@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { type LibraryGame, api, steamImg } from "./lib/api";
+import { GameImage } from "./GameImage";
+import { type LibraryGame, api } from "./lib/api";
 import type { InstalledIndex, Platform } from "../shared/types";
 
 type SortKey = "name" | "playtime" | "recent" | "year" | "rating";
@@ -90,7 +91,8 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 					type="text"
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
-					placeholder="Filter within this list…"
+					placeholder="Filter by name…"
+					title="Substring match on game name. For semantic queries (e.g. 'games about eggs'), use the search bar in the header."
 					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-56"
 				/>
 				<select
@@ -156,16 +158,12 @@ function GameCard({
 			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
 		>
 			<div className="relative">
-				<img
-					src={steamImg(game.appid, "library_capsule")}
-					alt={game.name}
-					loading="lazy"
-					onError={(e) => {
-						if (game.header_image && e.currentTarget.src !== game.header_image) {
-							e.currentTarget.src = game.header_image;
-						}
-					}}
-					className="w-full aspect-[2/3] object-cover bg-zinc-800 group-hover:scale-[1.02] transition-transform"
+				<GameImage
+					appid={game.appid}
+					name={game.name}
+					variant="library_capsule"
+					fallback={game.header_image}
+					className="w-full aspect-[2/3] object-cover bg-zinc-900 group-hover:scale-[1.02] transition-transform"
 				/>
 				{isInstalledHere && (
 					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">

@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-	type CurateResponse,
-	type LibraryGame,
-	api,
-	steamImg,
-} from "./lib/api";
+import { GameImage } from "./GameImage";
+import { type CurateResponse, type LibraryGame, api } from "./lib/api";
 import type { InstalledIndex } from "../shared/types";
 
 interface Props {
@@ -13,7 +9,7 @@ interface Props {
 	onPickVibe: (query: string) => void;
 }
 
-export function Home({ installed, onSelectGame, onPickVibe }: Props) {
+export function Home({ installed, onSelectGame }: Props) {
 	const [data, setData] = useState<CurateResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -48,8 +44,6 @@ export function Home({ installed, onSelectGame, onPickVibe }: Props) {
 					onSelect={() => onSelectGame(data.game_of_the_day!.appid)}
 				/>
 			)}
-
-			<Vibes vibes={data.by_vibe} onPick={onPickVibe} />
 
 			{data.continue_playing.length > 0 && (
 				<Section
@@ -141,16 +135,13 @@ function HeroPick({
 	return (
 		<section className="relative overflow-hidden rounded-xl border border-zinc-800">
 			<div className="absolute inset-0">
-				<img
-					src={steamImg(game.appid, "library_hero")}
+				<GameImage
+					appid={game.appid}
+					name=""
 					alt=""
+					variant="library_hero"
+					fallback={game.header_image}
 					className="w-full h-full object-cover opacity-50"
-					onError={(e) => {
-						const img = e.currentTarget;
-						if (game.header_image && img.src !== game.header_image) {
-							img.src = game.header_image;
-						}
-					}}
 				/>
 				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-zinc-950/30" />
 			</div>
@@ -188,33 +179,6 @@ function HeroPick({
 				>
 					View details →
 				</button>
-			</div>
-		</section>
-	);
-}
-
-function Vibes({
-	vibes,
-	onPick,
-}: {
-	vibes: CurateResponse["by_vibe"];
-	onPick: (query: string) => void;
-}) {
-	return (
-		<section>
-			<SectionHeader title="Try a vibe" subtitle="Click a chip to search by feel" />
-			<div className="flex flex-wrap gap-2">
-				{vibes.map((v) => (
-					<button
-						type="button"
-						key={v.label}
-						onClick={() => onPick(v.query)}
-						className="px-3.5 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-sm text-zinc-200 transition-colors"
-					>
-						<span className="mr-1.5">{v.emoji}</span>
-						{v.label}
-					</button>
-				))}
 			</div>
 		</section>
 	);
@@ -291,16 +255,12 @@ function TileCard({
 			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
 		>
 			<div className="relative">
-				<img
-					src={steamImg(game.appid, "library_capsule")}
-					alt={game.name}
-					loading="lazy"
-					onError={(e) => {
-						if (game.header_image && e.currentTarget.src !== game.header_image) {
-							e.currentTarget.src = game.header_image;
-						}
-					}}
-					className="w-full aspect-[2/3] object-cover bg-zinc-800 group-hover:scale-[1.02] transition-transform"
+				<GameImage
+					appid={game.appid}
+					name={game.name}
+					variant="library_capsule"
+					fallback={game.header_image}
+					className="w-full aspect-[2/3] object-cover bg-zinc-900 group-hover:scale-[1.02] transition-transform"
 				/>
 				{isInstalled && (
 					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">

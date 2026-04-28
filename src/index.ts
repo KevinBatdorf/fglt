@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { raw } from './db';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
+import { activityRoutes } from './routes/activity';
 import { curateRoutes } from './routes/curate';
 import { enrichRoutes } from './routes/enrich';
 import { libraryRoutes } from './routes/library';
@@ -36,6 +37,7 @@ app.route('/', enrichRoutes(raw));
 app.route('/', refreshRoutes(raw));
 app.route('/', curateRoutes(raw));
 app.route('/', listsRoutes(raw));
+app.route('/', activityRoutes(raw));
 mcpRoutes(app);
 
 app.get('/', (c) =>

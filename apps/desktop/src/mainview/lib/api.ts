@@ -131,6 +131,35 @@ export interface VibeChip {
 	emoji: string;
 }
 
+export interface ActivityResponse {
+	counts: {
+		games_added_24h: number;
+		enriched_24h: number;
+		embedded_24h: number;
+		videos_fetched_24h: number;
+		games_added_7d: number;
+		enriched_7d: number;
+		videos_fetched_7d: number;
+	};
+	recent_added: { appid: number; name: string; header_image: string | null; created_at: string }[];
+	recent_enriched: { appid: number; name: string; header_image: string | null; enriched_at: string }[];
+	recent_videos: {
+		appid: number;
+		name: string;
+		header_image: string | null;
+		youtube_fetched_at: string;
+		video_count: number;
+	}[];
+	lists_created: {
+		slug: string;
+		name: string;
+		emoji: string | null;
+		is_system: boolean;
+		created_at: string;
+	}[];
+	meta: { key: string; value: string; updated: string }[];
+}
+
 export interface CurateResponse {
 	continue_playing: LibraryGame[];
 	because_recently: { seed: CurateSeed; recs: LibraryGame[] } | null;
@@ -195,6 +224,9 @@ export const api = {
 	},
 	curate: (signal?: AbortSignal) =>
 		get<CurateResponse>("/curate", signal),
+	activity: (signal?: AbortSignal) =>
+		get<ActivityResponse>("/activity", signal),
+	syncOwned: () => jsonCall<{ ok: boolean; total: number; removed?: number }>("/sync", "POST"),
 	lists: (signal?: AbortSignal) =>
 		get<{ lists: ListSummary[] }>("/lists", signal),
 	listGames: (slug: string, signal?: AbortSignal) =>

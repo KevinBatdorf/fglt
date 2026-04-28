@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
+import { GameImage } from "./GameImage";
 import {
 	type GameDetail as GameDetailType,
 	type LibraryGame,
 	type ListSummary,
 	api,
-	steamImg,
 } from "./lib/api";
 import { rpc } from "./lib/rpc";
 import type { InstalledIndex, Platform } from "../shared/types";
@@ -18,10 +18,6 @@ interface Props {
 	onNavigate: (appid: number) => void;
 }
 
-/**
- * In-page detail view (replaces the modal). The Sidebar/Header stay visible;
- * back/home navigation is provided by the parent via canBack + onBack.
- */
 export function GameDetail({
 	appid,
 	installed,
@@ -59,7 +55,7 @@ export function GameDetail({
 	async function handleLaunchAction(platform: Platform) {
 		if (!game) return;
 		const owned = game.platforms.includes(platform);
-		if (!owned) return; // disabled buttons shouldn't fire
+		if (!owned) return;
 		const ownership = game.ownership.find((o) => o.platform === platform);
 		const externalId = ownership?.external_id ?? String(game.appid);
 		const isInstalledHere = isInstalledFor(installed, platform, game);
@@ -70,9 +66,7 @@ export function GameDetail({
 					? `steam://install/${game.appid}`
 					: platform === "epic"
 						? `com.epicgames.launcher://apps/${externalId}?action=install&silent=true`
-						: // GOG Galaxy has no documented install URI; opening the game's
-							// page is the closest — Galaxy renders the Install button there.
-							`goggalaxy://openGameView/${externalId}`;
+						: `goggalaxy://openGameView/${externalId}`;
 			await rpc.request.openUrl({ url: installUri });
 			return;
 		}
@@ -93,7 +87,7 @@ export function GameDetail({
 			const r = await rpc.request.refreshGame({ appid: game.appid });
 			setRefreshResult(
 				Object.entries(r.sources)
-					.map(([k, v]) => `${k}:${v.status}`)
+					.map(([k, v]) => `${k}: ${v.status}`)
 					.join(" · "),
 			);
 			const updated = await api.game(game.appid);
@@ -105,275 +99,242 @@ export function GameDetail({
 		}
 	}
 
-	if (error) {
-		return (
-			<div>
-				<DetailNav canBack={canBack} onBack={onBack} onHome={onHome} />
-				<div className="p-12 text-red-400 text-sm">{error}</div>
-			</div>
-		);
-	}
-	if (!game) {
-		return (
-			<div>
-				<DetailNav canBack={canBack} onBack={onBack} onHome={onHome} />
-				<div className="p-12 text-zinc-500 text-sm">Loading…</div>
-			</div>
-		);
-	}
-
-	const releaseYear = game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
-	const positivePct = positivePctOf(game);
-	const heroSrc = steamImg(game.appid, "library_hero");
-	const topTags = game.tags.slice(0, 12);
+	const releaseYear =
+		game?.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+	const positivePct = game ? positivePctOf(game) : null;
+	const topTags = game?.tags.slice(0, 12) ?? [];
 
 	return (
-		<div>
-			<DetailNav
-				canBack={canBack}
-				onBack={onBack}
-				onHome={onHome}
-				rightSlot={
-					<RefreshIcon
-						refreshing={refreshing}
-						onClick={handleRefresh}
+		<div className="-mx-6 -mt-6">
+			{/* Hero — nav buttons float on top, never cut off */}
+			<div className="relative">
+				{game && (
+					<GameImage
+						appid={game.appid}
+						name={game.name}
+						alt=""
+						variant="library_hero"
+						fallback={game.header_image}
+						className="w-full h-[340px] object-cover bg-zinc-900"
 					/>
-				}
-			/>
+				)}
+				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/30 to-transparent" />
 
-			{refreshResult && (
-				<div className="px-4 pb-2 text-[11px] text-zinc-500 font-mono">
-					{refreshResult}
+				{/* Top-left: Back / Home — z-10 above gradient */}
+				<div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+					<button
+						type="button"
+						onClick={onBack}
+						disabled={!canBack}
+						className="px-3 py-1.5 rounded-md bg-zinc-950/80 hover:bg-zinc-900 backdrop-blur-sm border border-zinc-700/60 text-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+						title={canBack ? "Back (Alt+Left, Backspace)" : "Nothing to go back to"}
+					>
+						<span aria-hidden>←</span>
+						<span>Back</span>
+					</button>
+					<button
+						type="button"
+						onClick={onHome}
+						className="px-3 py-1.5 rounded-md bg-zinc-950/80 hover:bg-zinc-900 backdrop-blur-sm border border-zinc-700/60 text-sm flex items-center gap-1.5 shadow-lg"
+						title="Home (Esc)"
+					>
+						<span aria-hidden>🏠</span>
+						<span>Home</span>
+					</button>
 				</div>
-			)}
 
-			<div className="relative -mx-6 -mt-6">
-				<img
-					src={heroSrc}
-					alt=""
-					className="w-full h-[360px] object-cover"
-					onError={(e) => {
-						if (game.header_image && e.currentTarget.src !== game.header_image) {
-							e.currentTarget.src = game.header_image;
-						}
-					}}
-				/>
-				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-zinc-950/10" />
-				<div className="absolute bottom-0 left-0 right-0 p-8 max-w-5xl">
-					<h2 className="text-3xl lg:text-4xl font-bold leading-tight drop-shadow-lg">
-						{game.name}
-					</h2>
-					<div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-zinc-200">
-						{releaseYear && <span>{releaseYear}</span>}
-						{game.developers && game.developers.length > 0 && (
-							<>
-								<span className="opacity-50">·</span>
-								<span>{game.developers.join(", ")}</span>
-							</>
-						)}
-						{game.genres && game.genres.length > 0 && (
-							<>
-								<span className="opacity-50">·</span>
-								<span>{game.genres.slice(0, 3).join(" / ")}</span>
-							</>
-						)}
+				{/* Title overlay at bottom of hero */}
+				{game && (
+					<div className="absolute bottom-0 left-0 right-0 px-6 py-5 max-w-5xl">
+						<h2 className="text-3xl lg:text-4xl font-bold leading-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+							{game.name}
+						</h2>
+						<div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200/90 drop-shadow">
+							{releaseYear && <span>{releaseYear}</span>}
+							{game?.developers && game.developers.length > 0 && (
+								<>
+									<span className="opacity-50">·</span>
+									<span>{game.developers.join(", ")}</span>
+								</>
+							)}
+							{game?.genres && game.genres.length > 0 && (
+								<>
+									<span className="opacity-50">·</span>
+									<span>{game.genres.slice(0, 3).join(" / ")}</span>
+								</>
+							)}
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
 
-			<div className="py-6 space-y-8 max-w-6xl">
-				<LaunchRow
-					game={game}
-					installed={installed}
-					onAction={handleLaunchAction}
-				/>
+			{/* Body */}
+			<div className="px-6 py-6 max-w-6xl space-y-8">
+				{error && <div className="text-red-400 text-sm">{error}</div>}
+				{!game && !error && (
+					<div className="text-zinc-500 text-sm">Loading…</div>
+				)}
 
-				<ListsSection
-					appid={game.appid}
-					memberOf={game.lists}
-					onChange={async () => {
-						const updated = await api.game(game.appid);
-						setGame(updated);
-					}}
-				/>
+				{game && (
+					<>
+						<LaunchRow
+							game={game}
+							installed={installed}
+							onAction={handleLaunchAction}
+						/>
 
-				<div className="grid lg:grid-cols-[1.5fr_1fr] gap-8">
-					<div className="space-y-6">
-						{game.short_desc && (
-							<section>
-								<p className="text-base text-zinc-200 leading-relaxed">
-									{game.short_desc}
-								</p>
-							</section>
-						)}
+						<ListsSection
+							appid={game.appid}
+							memberOf={game.lists}
+							onChange={async () => {
+								const updated = await api.game(game.appid);
+								setGame(updated);
+							}}
+						/>
 
-						{topTags.length > 0 && (
-							<section>
-								<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
-									Tags
-								</h3>
-								<div className="flex flex-wrap gap-1.5">
-									{topTags.map((t) => (
-										<span
-											key={t.tag}
-											className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300"
-											title={`${t.votes.toLocaleString()} votes`}
-										>
-											{t.tag}
-										</span>
-									))}
-								</div>
-							</section>
-						)}
-					</div>
+						<div className="grid lg:grid-cols-[1.5fr_1fr] gap-8">
+							<div className="space-y-6">
+								{game.short_desc && (
+									<section>
+										<p className="text-base text-zinc-200 leading-relaxed">
+											{game.short_desc}
+										</p>
+									</section>
+								)}
 
-					<div>
-						<StatsRow game={game} positivePct={positivePct} />
-					</div>
-				</div>
+								{topTags.length > 0 && (
+									<section>
+										<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+											Tags
+										</h3>
+										<div className="flex flex-wrap gap-1.5">
+											{topTags.map((t) => (
+												<span
+													key={t.tag}
+													className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300"
+													title={`${t.votes.toLocaleString()} votes`}
+												>
+													{t.tag}
+												</span>
+											))}
+										</div>
+									</section>
+								)}
+							</div>
 
-				{game.videos.length > 0 && (
-					<section>
-						<h3 className="text-base font-semibold mb-3">Videos</h3>
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-							{game.videos.slice(0, 4).map((v) => (
-								<VideoEmbed key={v.video_id} video={v} />
-							))}
+							<div>
+								<StatsRow game={game} positivePct={positivePct} />
+							</div>
 						</div>
-						{game.videos.length > 4 && (
-							<details className="mt-3">
-								<summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
-									Show {game.videos.length - 4} more
-								</summary>
-								<div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
-									{game.videos.slice(4).map((v) => (
+
+						{game.videos.length > 0 && (
+							<section>
+								<h3 className="text-base font-semibold mb-3">Videos</h3>
+								<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+									{game.videos.slice(0, 4).map((v) => (
 										<VideoEmbed key={v.video_id} video={v} />
 									))}
 								</div>
-							</details>
-						)}
-					</section>
-				)}
-
-				<section>
-					<h3 className="text-base font-semibold mb-3">
-						Similar games you own
-					</h3>
-					{vectorSimilar === null ? (
-						<div className="text-sm text-zinc-500">Finding similar…</div>
-					) : vectorSimilar.length === 0 ? (
-						<div className="text-sm text-zinc-500">
-							No close matches in your library.
-						</div>
-					) : (
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-							{vectorSimilar.slice(0, 12).map((s) => (
-								<SimilarCard
-									key={s.appid}
-									game={s}
-									installed={installed}
-									onClick={() => onNavigate(s.appid)}
-								/>
-							))}
-						</div>
-					)}
-				</section>
-
-				{game.similar.length > 0 && (
-					<section>
-						<h3 className="text-base font-semibold mb-3">
-							Steam suggests
-							<span className="ml-2 text-xs text-zinc-500 font-normal">
-								(may include games you don't own)
-							</span>
-						</h3>
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-							{game.similar
-								.filter((s) => s.header_image)
-								.slice(0, 12)
-								.map((s) => (
-									<button
-										key={s.appid}
-										type="button"
-										onClick={() => onNavigate(s.appid)}
-										className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
-									>
-										{s.header_image && (
-											<img src={s.header_image} alt={s.name ?? ""} className="w-full" />
-										)}
-										<div className="p-2 text-xs text-zinc-200 truncate">
-											{s.name}
+								{game.videos.length > 4 && (
+									<details className="mt-3">
+										<summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
+											Show {game.videos.length - 4} more
+										</summary>
+										<div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+											{game.videos.slice(4).map((v) => (
+												<VideoEmbed key={v.video_id} video={v} />
+											))}
 										</div>
-									</button>
-								))}
-						</div>
-					</section>
+									</details>
+								)}
+							</section>
+						)}
+
+						<section>
+							<h3 className="text-base font-semibold mb-3">
+								Similar games you own
+							</h3>
+							{vectorSimilar === null ? (
+								<div className="text-sm text-zinc-500">Finding similar…</div>
+							) : vectorSimilar.length === 0 ? (
+								<div className="text-sm text-zinc-500">
+									No close matches in your library.
+								</div>
+							) : (
+								<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+									{vectorSimilar.slice(0, 12).map((s) => (
+										<SimilarCard
+											key={s.appid}
+											game={s}
+											installed={installed}
+											onClick={() => onNavigate(s.appid)}
+										/>
+									))}
+								</div>
+							)}
+						</section>
+
+						{game.similar.length > 0 && (
+							<section>
+								<h3 className="text-base font-semibold mb-3">
+									Steam suggests
+									<span className="ml-2 text-xs text-zinc-500 font-normal">
+										(may include games you don't own)
+									</span>
+								</h3>
+								<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+									{game.similar
+										.filter((s) => s.header_image)
+										.slice(0, 12)
+										.map((s) => (
+											<button
+												key={s.appid}
+												type="button"
+												onClick={() => onNavigate(s.appid)}
+												className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+											>
+												{s.header_image && (
+													<img
+														src={s.header_image}
+														alt={s.name ?? ""}
+														className="w-full"
+													/>
+												)}
+												<div className="p-2 text-xs text-zinc-200 truncate">
+													{s.name}
+												</div>
+											</button>
+										))}
+								</div>
+							</section>
+						)}
+
+						{/* Demoted refresh — small, low-emphasis text link at the bottom */}
+						<section className="pt-4 border-t border-zinc-900">
+							<div className="flex items-center gap-3 text-[11px] text-zinc-600">
+								<button
+									type="button"
+									onClick={handleRefresh}
+									disabled={refreshing}
+									className="underline-offset-2 hover:underline hover:text-zinc-400 disabled:opacity-40"
+									title="Re-fetch external data (YouTube videos, etc.) for this game. Each source has its own quota — only run when needed."
+								>
+									{refreshing ? "Refreshing…" : "Re-fetch external data"}
+								</button>
+								<span className="text-zinc-700">
+									Quotas apply (YouTube etc.)
+								</span>
+								{refreshResult && (
+									<span className="font-mono text-zinc-500">
+										{refreshResult}
+									</span>
+								)}
+							</div>
+						</section>
+					</>
 				)}
 			</div>
 		</div>
-	);
-}
-
-function DetailNav({
-	canBack,
-	onBack,
-	onHome,
-	rightSlot,
-}: {
-	canBack: boolean;
-	onBack: () => void;
-	onHome: () => void;
-	rightSlot?: React.ReactNode;
-}) {
-	return (
-		<div className="flex items-center gap-2 mb-4">
-			<button
-				type="button"
-				onClick={onBack}
-				disabled={!canBack}
-				className="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-				title={canBack ? "Back (Alt+Left, Backspace)" : "Nothing to go back to"}
-			>
-				<span aria-hidden>←</span>
-				<span>Back</span>
-			</button>
-			<button
-				type="button"
-				onClick={onHome}
-				className="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-sm flex items-center gap-1.5"
-				title="Home (Esc)"
-			>
-				<span aria-hidden>🏠</span>
-				<span>Home</span>
-			</button>
-			<div className="flex-1" />
-			{rightSlot}
-		</div>
-	);
-}
-
-function RefreshIcon({
-	refreshing,
-	onClick,
-}: {
-	refreshing: boolean;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={refreshing}
-			className="w-8 h-8 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-sm flex items-center justify-center disabled:opacity-50"
-			title={
-				refreshing
-					? "Refreshing…"
-					: "Re-fetch external data (YouTube videos, etc.) for this game. Hits each source once and surfaces per-source results. Quotas apply."
-			}
-			aria-label="Refresh game data"
-		>
-			{refreshing ? "…" : "↻"}
-		</button>
 	);
 }
 
@@ -692,16 +653,12 @@ function SimilarCard({
 			className="text-left rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
 		>
 			<div className="relative">
-				<img
-					src={steamImg(game.appid, "library_capsule")}
-					alt={game.name}
-					loading="lazy"
-					onError={(e) => {
-						if (game.header_image && e.currentTarget.src !== game.header_image) {
-							e.currentTarget.src = game.header_image;
-						}
-					}}
-					className="w-full aspect-[2/3] object-cover bg-zinc-800"
+				<GameImage
+					appid={game.appid}
+					name={game.name}
+					variant="library_capsule"
+					fallback={game.header_image}
+					className="w-full aspect-[2/3] object-cover bg-zinc-900"
 				/>
 				{isInstalledHere && (
 					<span className="absolute top-1.5 left-1.5 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">

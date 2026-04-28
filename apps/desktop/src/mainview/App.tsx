@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { AllGames } from "./AllGames";
+import { Discover } from "./Discover";
 import { GameDetail } from "./GameDetail";
+import { GameImage } from "./GameImage";
 import { Home } from "./Home";
+import { Settings } from "./Settings";
 import {
 	type LibraryGame,
 	type ListSummary,
 	type Stats,
 	api,
-	steamImg,
 } from "./lib/api";
 import { rpc } from "./lib/rpc";
 import { type View, Sidebar } from "./Sidebar";
+import { VIBES } from "./lib/vibes";
 import type { InstalledIndex, Platform } from "../shared/types";
 
 const RECENT_KEY = "seg.recentSearches.v1";
@@ -41,17 +44,21 @@ function App() {
 	const [query, setQuery] = useState("");
 	const [recent, setRecent] = useState<string[]>(readRecent);
 
-	useEffect(() => {
+	const refreshStats = useCallback(() => {
 		api.stats().then(setStats).catch(console.error);
-		rpc.request.getInstalledIndex({}).then(setInstalled).catch(console.error);
 	}, []);
+
+	useEffect(() => {
+		refreshStats();
+		rpc.request.getInstalledIndex({}).then(setInstalled).catch(console.error);
+	}, [refreshStats]);
 
 	const navigate = useCallback(
 		(next: View) => {
 			setHistory((h) => [...h, view]);
 			setView(next);
 			if (next.kind === "search") setQuery(next.query);
-			else if (next.kind !== "search") setQuery("");
+			else setQuery("");
 		},
 		[view],
 	);
@@ -73,12 +80,13 @@ function App() {
 		setQuery("");
 	}, []);
 
-	const open = useCallback((appid: number) => {
-		navigate({ kind: "detail", appid });
-	}, [navigate]);
+	const open = useCallback(
+		(appid: number) => {
+			navigate({ kind: "detail", appid });
+		},
+		[navigate],
+	);
 
-	// Search box typing → switch view to search (without polluting history each
-	// keystroke). Empty query → home.
 	useEffect(() => {
 		const q = query.trim();
 		if (q.length === 0) {
@@ -86,12 +94,10 @@ function App() {
 			return;
 		}
 		if (view.kind !== "search" || view.query !== q) {
-			// Replace, don't push, while typing
 			setView({ kind: "search", query: q });
 		}
 	}, [query, view]);
 
-	// Settle search into recents
 	useEffect(() => {
 		if (view.kind !== "search") return;
 		const q = view.query;
@@ -106,7 +112,6 @@ function App() {
 		return () => clearTimeout(t);
 	}, [view]);
 
-	// Keyboard: Alt+Left or Backspace = back; Escape = home (when not editing).
 	useEffect(() => {
 		const handler = (e: KeyboardEvent) => {
 			const target = e.target as HTMLElement | null;
@@ -133,8 +138,6 @@ function App() {
 		return () => window.removeEventListener("keydown", handler);
 	}, [back, home]);
 
-	const platformCounts = stats?.platforms ?? {};
-
 	return (
 		<div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
 			<Sidebar
@@ -150,26 +153,32 @@ function App() {
 					setRecent([]);
 					writeRecent([]);
 				}}
-				platformCounts={platformCounts}
+				platformCounts={stats?.platforms ?? {}}
 			/>
 
 			<div className="flex-1 min-w-0 flex flex-col">
 				<header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-					<div className="px-6 py-3.5 flex items-center gap-4">
+					<div className="px-6 py-3.5">
 						<input
 							type="text"
 							placeholder="Search your library — vibe queries work too"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
-							className="flex-1 max-w-2xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+							className="w-full max-w-3xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
 						/>
 					</div>
-					{stats && <StatsBar stats={stats} installed={installed} />}
+					<VibeRow
+						onPick={(q) => {
+							setQuery(q);
+							navigate({ kind: "search", query: q });
+						}}
+					/>
 				</header>
 
 				<main className="flex-1 px-6 py-6">
 					<MainView
 						view={view}
+						stats={stats}
 						installed={installed}
 						onSelectGame={open}
 						onPickVibe={(q) => {
@@ -179,6 +188,7 @@ function App() {
 						onBack={back}
 						onHome={home}
 						canBack={history.length > 0}
+						refreshStats={refreshStats}
 					/>
 				</main>
 			</div>
@@ -186,22 +196,44 @@ function App() {
 	);
 }
 
+function VibeRow({ onPick }: { onPick: (query: string) => void }) {
+	return (
+		<div className="px-6 pb-3 flex flex-wrap gap-1.5">
+			{VIBES.map((v) => (
+				<button
+					type="button"
+					key={v.label}
+					onClick={() => onPick(v.query)}
+					className="text-[11px] px-2.5 py-1 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+				>
+					<span className="mr-1">{v.emoji}</span>
+					{v.label}
+				</button>
+			))}
+		</div>
+	);
+}
+
 function MainView({
 	view,
+	stats,
 	installed,
 	onSelectGame,
 	onPickVibe,
 	onBack,
 	onHome,
 	canBack,
+	refreshStats,
 }: {
 	view: View;
+	stats: Stats | null;
 	installed: InstalledIndex | null;
 	onSelectGame: (appid: number) => void;
 	onPickVibe: (q: string) => void;
 	onBack: () => void;
 	onHome: () => void;
 	canBack: boolean;
+	refreshStats: () => void;
 }) {
 	if (view.kind === "home")
 		return (
@@ -243,6 +275,10 @@ function MainView({
 			/>
 		);
 	}
+	if (view.kind === "discover")
+		return (
+			<Discover what={view.what} installed={installed} onSelect={onSelectGame} />
+		);
 	if (view.kind === "platform")
 		return (
 			<AllGames
@@ -255,6 +291,8 @@ function MainView({
 		return (
 			<ListView slug={view.slug} installed={installed} onSelect={onSelectGame} />
 		);
+	if (view.kind === "settings")
+		return <Settings stats={stats} onStatsRefresh={refreshStats} />;
 	return null;
 }
 
@@ -307,7 +345,7 @@ function FilterView({
 	installed,
 	onSelect,
 }: {
-	what: "unplayed" | "recent";
+	what: "unplayed" | "recently_played" | "recently_added";
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
@@ -317,17 +355,25 @@ function FilterView({
 	useEffect(() => {
 		const ctrl = new AbortController();
 		setLoading(true);
-		const params: Record<string, string | number | undefined> = { limit: 200 };
+		const params: Record<string, string | number | undefined> = {
+			limit: what === "recently_added" ? 5000 : 200,
+		};
 		if (what === "unplayed") params.unplayed = "1";
-		if (what === "recent") params.min_playtime = 1;
+		if (what === "recently_played") params.min_playtime = 1;
 		api
 			.library(params, ctrl.signal)
 			.then((d) => {
 				let rows = d.results;
-				if (what === "recent") {
+				if (what === "recently_played") {
 					rows = [...rows].sort(
 						(a, b) => (b.playtime_2wk ?? 0) - (a.playtime_2wk ?? 0),
 					);
+				}
+				if (what === "recently_added") {
+					// `created_at` isn't on LibraryGame yet (would need an API tweak); for
+					// now sort by appid desc as a proxy — Steam appids monotonically
+					// increase, so newer purchases tend to come first.
+					rows = [...rows].sort((a, b) => b.appid - a.appid);
 				}
 				setResults(rows);
 			})
@@ -336,11 +382,18 @@ function FilterView({
 		return () => ctrl.abort();
 	}, [what]);
 
-	const title = what === "unplayed" ? "Unplayed" : "Recently played";
+	const title =
+		what === "unplayed"
+			? "Unplayed"
+			: what === "recently_played"
+				? "Recently played"
+				: "Recently added";
 	const subtitle =
 		what === "unplayed"
 			? "Games you have never started"
-			: "Sorted by 2-week playtime";
+			: what === "recently_played"
+				? "Sorted by 2-week playtime"
+				: "Newest games in your library first";
 
 	if (loading && results.length === 0)
 		return <div className="text-zinc-500 text-sm">Loading…</div>;
@@ -461,16 +514,12 @@ function GameCard({
 			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
 		>
 			<div className="relative">
-				<img
-					src={steamImg(game.appid, "library_capsule")}
-					alt={game.name}
-					loading="lazy"
-					onError={(e) => {
-						if (game.header_image && e.currentTarget.src !== game.header_image) {
-							e.currentTarget.src = game.header_image;
-						}
-					}}
-					className="w-full aspect-[2/3] object-cover bg-zinc-800 group-hover:scale-[1.02] transition-transform"
+				<GameImage
+					appid={game.appid}
+					name={game.name}
+					variant="library_capsule"
+					fallback={game.header_image}
+					className="w-full aspect-[2/3] object-cover bg-zinc-900 group-hover:scale-[1.02] transition-transform"
 				/>
 				{isInstalledHere && (
 					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
@@ -496,33 +545,6 @@ function GameCard({
 				</div>
 			</div>
 		</button>
-	);
-}
-
-function StatsBar({
-	stats,
-	installed,
-}: {
-	stats: Stats;
-	installed: InstalledIndex | null;
-}) {
-	const installedTotal = installed
-		? installed.steam.length + installed.epic.length + installed.gog.length
-		: 0;
-	return (
-		<div className="px-6 pb-2.5 text-[11px] text-zinc-500 tabular-nums flex items-center gap-3 flex-wrap">
-			<span>{stats.total.toLocaleString()} games</span>
-			<span className="opacity-50">·</span>
-			<span>{stats.unplayed.toLocaleString()} unplayed</span>
-			<span className="opacity-50">·</span>
-			<span>{stats.multi_platform} multi-platform</span>
-			{installed && (
-				<>
-					<span className="opacity-50">·</span>
-					<span>{installedTotal} installed</span>
-				</>
-			)}
-		</div>
 	);
 }
 
