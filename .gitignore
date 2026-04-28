@@ -7,3 +7,8 @@ bun.lock
 
 # Claude Code per-user permissions
 .claude/settings.local.json
+
+# Playwright screenshot/snapshot artifacts
+.playwright-mcp/
+seg-home.png
+*.screenshot.png
