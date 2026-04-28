@@ -138,7 +138,7 @@ export function Sidebar({
 						<button
 							type="button"
 							onClick={() => setCreatingList((v) => !v)}
-							className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
+							className="-mr-2 text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
 							title={creatingList ? "Cancel" : "Create new list"}
 						>
 							{creatingList ? "Cancel" : "+ New"}
@@ -215,12 +215,14 @@ export function Sidebar({
 				)}
 			</nav>
 
-			{/* Sticky bottom: Settings */}
-			<div className="border-t border-zinc-800 py-2">
+			{/* Sticky bottom: Settings — button itself takes the full footer
+			    height so the hover background fills edge-to-edge instead of
+			    leaving a halo around an inset button. */}
+			<div className="border-t border-zinc-800">
 				<button
 					type="button"
 					onClick={() => onNavigate({ kind: "settings" })}
-					className={`w-full h-10 px-3 flex items-center gap-2.5 text-sm text-left transition-colors ${
+					className={`w-full h-12 px-3 flex items-center gap-2.5 text-sm text-left transition-colors ${
 						view.kind === "settings"
 							? "bg-zinc-800 text-zinc-100"
 							: "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
@@ -245,6 +247,10 @@ function Section({
 }) {
 	return (
 		<div className="mb-4">
+			{/* Symmetric px-3 — same as NavItem. Action buttons that have
+			    their own internal padding (e.g. the "+ New" pill) must apply
+			    `-mr-2` themselves so their text aligns with NavItem `count`
+			    labels. Plain text actions (like "clear") need nothing. */}
 			<div className="px-3 h-7 flex items-center justify-between gap-2">
 				<h3 className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
 					{title}

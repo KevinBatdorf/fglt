@@ -226,6 +226,11 @@ export const api = {
 	},
 	curate: (signal?: AbortSignal) =>
 		get<CurateResponse>("/curate", signal),
+	tags: (signal?: AbortSignal) =>
+		get<{ tags: { tag: string; total_votes: number; games: number }[] }>(
+			"/tags",
+			signal,
+		),
 	activity: (signal?: AbortSignal) =>
 		get<ActivityResponse>("/activity", signal),
 	syncOwned: () => jsonCall<{ ok: boolean; total: number; removed?: number }>("/sync", "POST"),
@@ -239,6 +244,19 @@ export const api = {
 		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, "POST", { note }),
 	removeFromList: (listRef: string | number, appid: number) =>
 		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, "DELETE"),
+	random: (
+		params: Record<string, string | number | undefined>,
+		signal?: AbortSignal,
+	) => {
+		const url = new URL(`${API_BASE}/random`);
+		for (const [k, v] of Object.entries(params)) {
+			if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+		}
+		return get<{ appid: number; name: string }>(
+			url.pathname + url.search,
+			signal,
+		);
+	},
 };
 
 /**

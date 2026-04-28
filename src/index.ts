@@ -13,6 +13,7 @@ import { refreshRoutes } from './routes/refresh';
 import { similarRoutes } from './routes/similar';
 import { statsRoutes } from './routes/stats';
 import { syncRoutes } from './routes/sync';
+import { tagsRoutes } from './routes/tags';
 
 const app = new Hono();
 
@@ -38,6 +39,7 @@ app.route('/', refreshRoutes(raw));
 app.route('/', curateRoutes(raw));
 app.route('/', listsRoutes(raw));
 app.route('/', activityRoutes(raw));
+app.route('/', tagsRoutes(raw));
 mcpRoutes(app);
 
 app.get('/', (c) =>

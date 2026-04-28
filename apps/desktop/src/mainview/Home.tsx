@@ -108,7 +108,7 @@ export function Home({ installed, onSelectGame }: Props) {
 			{data.trending.length > 0 && (
 				<Section
 					title="Trending in your library"
-					subtitle="Sorted by peak concurrent users"
+					subtitle="Games you own, ranked by Steam peak-concurrent-players (snapshotted at enrichment — coarse cultural-heat proxy, not real-time)"
 					games={data.trending}
 					installed={installed}
 					onSelect={onSelectGame}

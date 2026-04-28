@@ -70,6 +70,30 @@ function App() {
 		[view],
 	);
 
+	// Random in the sidebar opens ONE random game's detail. Re-clicking
+	// Random re-rolls. We bypass the Discover view entirely.
+	const handleSidebarNavigate = useCallback(
+		async (next: View) => {
+			if (next.kind === "discover" && next.what === "random") {
+				try {
+					const game = await api.random({ unplayed: "1" });
+					navigate({ kind: "detail", appid: game.appid });
+				} catch (e) {
+					console.error("random fetch failed", e);
+				}
+				return;
+			}
+			if (
+				next.kind === view.kind &&
+				JSON.stringify(next) === JSON.stringify(view)
+			) {
+				return;
+			}
+			navigate(next);
+		},
+		[navigate, view],
+	);
+
 	const back = useCallback(() => {
 		setHistory((h) => {
 			if (h.length === 0) return h;
@@ -149,12 +173,7 @@ function App() {
 		<div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
 			<Sidebar
 				view={view}
-				onNavigate={(v) => {
-					if (v.kind === view.kind && JSON.stringify(v) === JSON.stringify(view)) {
-						return;
-					}
-					navigate(v);
-				}}
+				onNavigate={handleSidebarNavigate}
 				recentSearches={recent}
 				onClearRecent={() => {
 					setRecent([]);
@@ -266,17 +285,10 @@ function MainView({
 			/>
 		);
 	if (view.kind === "filter") {
-		if (view.what === "all")
-			return (
-				<AllGames
-					platformFilter={null}
-					installed={installed}
-					onSelect={onSelectGame}
-				/>
-			);
 		return (
-			<FilterView
-				what={view.what}
+			<AllGames
+				platformFilter={null}
+				preset={view.what}
 				installed={installed}
 				onSelect={onSelectGame}
 			/>
@@ -319,20 +331,31 @@ function SearchResults({
 	const [error, setError] = useState<string | null>(null);
 	const [sort, setSort] = useState<SearchSort>("match");
 	const [genre, setGenre] = useState<string>("");
+	const [tag, setTag] = useState<string>("");
+	const [allTags, setAllTags] = useState<{ tag: string; games: number }[]>([]);
+
+	useEffect(() => {
+		api.tags().then((d) => setAllTags(d.tags)).catch(console.warn);
+	}, []);
 
 	useEffect(() => {
 		const ctrl = new AbortController();
 		setLoading(true);
 		setError(null);
+		const params: Record<string, string | number | undefined> = {
+			q: query,
+			limit: 500,
+		};
+		if (tag) params.tag = tag;
 		api
-			.library({ q: query, limit: 200 }, ctrl.signal)
+			.library(params, ctrl.signal)
 			.then((d) => setResults(d.results))
 			.catch((e) => {
 				if (e.name !== "AbortError") setError(e.message);
 			})
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
-	}, [query]);
+	}, [query, tag]);
 
 	const allGenres = useMemo(() => {
 		const set = new Set<string>();
@@ -345,7 +368,7 @@ function SearchResults({
 	const visible = useMemo(() => {
 		let out = results;
 		if (genre) out = out.filter((g) => (g.genres ?? []).includes(genre));
-		if (sort === "match") return out; // already in relevance order from API
+		if (sort === "match") return out;
 		const sorted = [...out];
 		sorted.sort((a, b) => {
 			switch (sort) {
@@ -375,20 +398,27 @@ function SearchResults({
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (loading && results.length === 0)
 		return <div className="text-zinc-500 text-sm">Searching…</div>;
-	if (results.length === 0)
+	if (results.length === 0 && !loading)
 		return <div className="text-zinc-500 text-sm">No matches.</div>;
 
 	return (
 		<div>
-			<header className="mb-4 flex flex-wrap items-center gap-3">
+			<header className="mb-3">
 				<h1 className="text-lg font-semibold">
 					{visible.length} {visible.length === 1 ? "result" : "results"} for{" "}
 					<span className="text-zinc-300">"{query}"</span>
 				</h1>
+				<p className="text-xs text-zinc-500 mt-0.5">
+					{sort === "match"
+						? "Ranked by hybrid keyword + semantic relevance"
+						: `Showing ${visible.length} of ${results.length} sorted by ${sort}`}
+				</p>
+			</header>
+			<div className="mb-4 flex flex-wrap items-center gap-2">
 				<select
 					value={genre}
 					onChange={(e) => setGenre(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
 				>
 					<option value="">All genres</option>
 					{allGenres.map((g) => (
@@ -398,9 +428,21 @@ function SearchResults({
 					))}
 				</select>
 				<select
+					value={tag}
+					onChange={(e) => setTag(e.target.value)}
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+				>
+					<option value="">All tags</option>
+					{allTags.map((t) => (
+						<option key={t.tag} value={t.tag}>
+							{t.tag} ({t.games})
+						</option>
+					))}
+				</select>
+				<select
 					value={sort}
 					onChange={(e) => setSort(e.target.value as SearchSort)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
 				>
 					<option value="match">Sort: Match</option>
 					<option value="rating">Sort: Highest rated</option>
@@ -409,12 +451,7 @@ function SearchResults({
 					<option value="year">Sort: Newest first</option>
 					<option value="name">Sort: A–Z</option>
 				</select>
-				<span className="ml-auto text-[11px] text-zinc-500 tabular-nums">
-					{sort === "match"
-						? "ranked by relevance"
-						: `${visible.length} of ${results.length}`}
-				</span>
-			</header>
+			</div>
 			<GameGrid games={visible} installed={installed} onSelect={onSelect} />
 		</div>
 	);
@@ -425,77 +462,6 @@ function ratingPct(g: { positive: number | null; negative: number | null }): num
 	const total = g.positive + (g.negative ?? 0);
 	if (total === 0) return null;
 	return Math.round((g.positive / total) * 100);
-}
-
-function FilterView({
-	what,
-	installed,
-	onSelect,
-}: {
-	what: "unplayed" | "recently_played" | "recently_added";
-	installed: InstalledIndex | null;
-	onSelect: (appid: number) => void;
-}) {
-	const [results, setResults] = useState<LibraryGame[]>([]);
-	const [loading, setLoading] = useState(true);
-
-	useEffect(() => {
-		const ctrl = new AbortController();
-		setLoading(true);
-		const params: Record<string, string | number | undefined> = {
-			limit: 5000,
-		};
-		if (what === "unplayed") params.unplayed = "1";
-		if (what === "recently_played") params.min_playtime = 1;
-		api
-			.library(params, ctrl.signal)
-			.then((d) => {
-				let rows = d.results;
-				if (what === "recently_played") {
-					rows = [...rows].sort(
-						(a, b) => (b.playtime_2wk ?? 0) - (a.playtime_2wk ?? 0),
-					);
-				}
-				if (what === "recently_added") {
-					// `created_at` isn't on LibraryGame yet (would need an API tweak); for
-					// now sort by appid desc as a proxy — Steam appids monotonically
-					// increase, so newer purchases tend to come first.
-					rows = [...rows].sort((a, b) => b.appid - a.appid);
-				}
-				setResults(rows);
-			})
-			.catch(console.error)
-			.finally(() => setLoading(false));
-		return () => ctrl.abort();
-	}, [what]);
-
-	const title =
-		what === "unplayed"
-			? "Unplayed"
-			: what === "recently_played"
-				? "Recently played"
-				: "Recently added";
-	const subtitle =
-		what === "unplayed"
-			? "Games you have never started"
-			: what === "recently_played"
-				? "Sorted by 2-week playtime"
-				: "Newest games in your library first";
-
-	if (loading && results.length === 0)
-		return <div className="text-zinc-500 text-sm">Loading…</div>;
-
-	return (
-		<div>
-			<header className="mb-4">
-				<h1 className="text-lg font-semibold">{title}</h1>
-				<p className="text-xs text-zinc-500">
-					{subtitle} · {results.length} games
-				</p>
-			</header>
-			<GameGrid games={results} installed={installed} onSelect={onSelect} />
-		</div>
-	);
 }
 
 function ListView({

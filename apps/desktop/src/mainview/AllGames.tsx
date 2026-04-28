@@ -3,45 +3,88 @@ import { GameImage } from "./GameImage";
 import { type LibraryGame, api } from "./lib/api";
 import type { InstalledIndex, Platform } from "../shared/types";
 
-type SortKey = "name" | "playtime" | "recent" | "year" | "rating";
+type Preset = "all" | "unplayed" | "recently_played" | "recently_added";
+type SortKey =
+	| "name"
+	| "playtime"
+	| "recently_played"
+	| "recently_added"
+	| "year"
+	| "rating";
 
 interface Props {
 	platformFilter: Platform | null;
+	preset?: Preset;
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }
 
-export function AllGames({ platformFilter, installed, onSelect }: Props) {
+const DEFAULT_SORT: Record<Preset, SortKey> = {
+	all: "name",
+	unplayed: "rating",
+	recently_played: "recently_played",
+	recently_added: "recently_added",
+};
+
+const PRESET_TITLE: Record<Preset, string | null> = {
+	all: null,
+	unplayed: "Unplayed",
+	recently_played: "Recently played",
+	recently_added: "Recently added",
+};
+
+export function AllGames({
+	platformFilter,
+	preset = "all",
+	installed,
+	onSelect,
+}: Props) {
 	const [allGames, setAllGames] = useState<LibraryGame[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [sort, setSort] = useState<SortKey>("name");
+	const [sort, setSort] = useState<SortKey>(DEFAULT_SORT[preset]);
 	const [genre, setGenre] = useState<string>("");
+	const [tag, setTag] = useState<string>("");
 	const [filter, setFilter] = useState("");
 	const [searchOrder, setSearchOrder] = useState<number[] | null>(null);
 	const [searching, setSearching] = useState(false);
+	const [allTags, setAllTags] = useState<{ tag: string; games: number }[]>([]);
 
+	// Reset sort when preset changes (different default)
+	useEffect(() => {
+		setSort(DEFAULT_SORT[preset]);
+		setGenre("");
+		setTag("");
+		setFilter("");
+	}, [preset]);
+
+	// Pull all games for the current view (preset + platform). Tag filter is
+	// also pushed to the server because it's a JOIN query.
 	useEffect(() => {
 		const ctrl = new AbortController();
 		setAllGames(null);
+		const params: Record<string, string | number | undefined> = {
+			platform: platformFilter ?? undefined,
+			limit: 5000,
+			sort: "name",
+		};
+		if (preset === "unplayed") params.unplayed = "1";
+		if (preset === "recently_played") params.min_playtime = 1;
+		if (tag) params.tag = tag;
 		api
-			.library(
-				{
-					platform: platformFilter ?? undefined,
-					limit: 5000,
-					sort: "name",
-				},
-				ctrl.signal,
-			)
+			.library(params, ctrl.signal)
 			.then((d) => setAllGames(d.results))
 			.catch((e) => {
 				if (e.name !== "AbortError") setError(e.message);
 			});
 		return () => ctrl.abort();
-	}, [platformFilter]);
+	}, [platformFilter, preset, tag]);
 
-	// Hybrid (semantic + keyword) search via /library?q=, scoped to the
-	// current platform. Empty input clears searchOrder and the view falls back
-	// to the local sort/genre logic.
+	// Fetch top tags once
+	useEffect(() => {
+		api.tags().then((d) => setAllTags(d.tags));
+	}, []);
+
+	// Hybrid search within the current view
 	useEffect(() => {
 		const ctrl = new AbortController();
 		const q = filter.trim();
@@ -52,15 +95,16 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 		}
 		setSearching(true);
 		const t = setTimeout(() => {
+			const params: Record<string, string | number | undefined> = {
+				q,
+				platform: platformFilter ?? undefined,
+				limit: 200,
+			};
+			if (preset === "unplayed") params.unplayed = "1";
+			if (preset === "recently_played") params.min_playtime = 1;
+			if (tag) params.tag = tag;
 			api
-				.library(
-					{
-						q,
-						platform: platformFilter ?? undefined,
-						limit: 200,
-					},
-					ctrl.signal,
-				)
+				.library(params, ctrl.signal)
 				.then((d) => setSearchOrder(d.results.map((g) => g.appid)))
 				.catch((e) => {
 					if (e.name !== "AbortError") console.warn("filter search failed", e);
@@ -71,7 +115,7 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 			clearTimeout(t);
 			ctrl.abort();
 		};
-	}, [filter, platformFilter]);
+	}, [filter, platformFilter, preset, tag]);
 
 	const allGenres = useMemo(() => {
 		if (!allGames) return [] as string[];
@@ -85,15 +129,12 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 	const visible = useMemo(() => {
 		if (!allGames) return [] as LibraryGame[];
 
-		// Build a map for O(1) lookup, applying the genre filter inline.
 		const byId = new Map<number, LibraryGame>();
 		for (const g of allGames) {
 			if (genre && !(g.genres ?? []).includes(genre)) continue;
 			byId.set(g.appid, g);
 		}
 
-		// If the user has typed a search, intersect with /library results in
-		// relevance order; ignore the local sort dropdown.
 		if (searchOrder !== null) {
 			const out: LibraryGame[] = [];
 			for (const id of searchOrder) {
@@ -110,11 +151,16 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 					return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 				case "playtime":
 					return (b.playtime_min ?? 0) - (a.playtime_min ?? 0);
-				case "recent":
-					return (
-						new Date(b.last_played ?? 0).getTime() -
-						new Date(a.last_played ?? 0).getTime()
-					);
+				case "recently_played": {
+					const ta = new Date(a.last_played ?? 0).getTime();
+					const tb = new Date(b.last_played ?? 0).getTime();
+					if (ta !== tb) return tb - ta;
+					return (b.playtime_2wk ?? 0) - (a.playtime_2wk ?? 0);
+				}
+				case "recently_added":
+					// Steam appids monotonically increase, so newer purchases tend to
+					// have higher ids — proxy until we expose created_at on /library.
+					return b.appid - a.appid;
 				case "year": {
 					const ya = Number(a.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
 					const yb = Number(b.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
@@ -132,25 +178,39 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (!allGames)
-		return <div className="text-zinc-500 text-sm">Loading library…</div>;
+		return <div className="text-zinc-500 text-sm">Loading…</div>;
 
 	const sortDisabled = searchOrder !== null;
+	const presetTitle = PRESET_TITLE[preset];
 
 	return (
 		<div>
-			<header className="mb-4 flex flex-wrap items-center gap-3">
+			{presetTitle && (
+				<header className="mb-3">
+					<h1 className="text-lg font-semibold">{presetTitle}</h1>
+					<p className="text-xs text-zinc-500">
+						{searching
+							? "searching…"
+							: `${visible.length.toLocaleString()} of ${allGames.length.toLocaleString()} games`}
+						{searchOrder !== null && (
+							<span className="ml-1 text-zinc-600">· ranked by relevance</span>
+						)}
+					</p>
+				</header>
+			)}
+			<div className="mb-4 flex flex-wrap items-center gap-2">
 				<input
 					type="text"
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
 					placeholder="Search this view…"
-					title="Hybrid keyword + semantic vector search, scoped to the current view (platform / genre)."
+					title="Hybrid keyword + semantic vector search, scoped to the current view (platform / preset / tag / genre)."
 					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
 				/>
 				<select
 					value={genre}
 					onChange={(e) => setGenre(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
 				>
 					<option value="">All genres</option>
 					{allGenres.map((g) => (
@@ -160,31 +220,46 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 					))}
 				</select>
 				<select
+					value={tag}
+					onChange={(e) => setTag(e.target.value)}
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+				>
+					<option value="">All tags</option>
+					{allTags.map((t) => (
+						<option key={t.tag} value={t.tag}>
+							{t.tag} ({t.games})
+						</option>
+					))}
+				</select>
+				<select
 					value={sort}
 					onChange={(e) => setSort(e.target.value as SortKey)}
 					disabled={sortDisabled}
 					title={sortDisabled ? "Search results are ranked by relevance" : ""}
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600 disabled:opacity-50"
+					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600 disabled:opacity-50"
 				>
 					<option value="name">Sort: A–Z</option>
 					<option value="playtime">Sort: Most played</option>
-					<option value="recent">Sort: Recently played</option>
+					<option value="recently_played">Sort: Recently played</option>
+					<option value="recently_added">Sort: Recently added</option>
 					<option value="year">Sort: Newest first</option>
 					<option value="rating">Sort: Highest rated</option>
 				</select>
-				<span className="ml-auto text-xs text-zinc-500 tabular-nums">
-					{searching ? "searching…" : null}
-					{!searching && (
-						<>
-							{visible.length.toLocaleString()} of{" "}
-							{allGames.length.toLocaleString()}
-							{searchOrder !== null && (
-								<span className="ml-1 text-zinc-600">· ranked by relevance</span>
-							)}
-						</>
-					)}
-				</span>
-			</header>
+				{!presetTitle && (
+					<span className="ml-auto text-xs text-zinc-500 tabular-nums">
+						{searching ? "searching…" : null}
+						{!searching && (
+							<>
+								{visible.length.toLocaleString()} of{" "}
+								{allGames.length.toLocaleString()}
+								{searchOrder !== null && (
+									<span className="ml-1 text-zinc-600">· ranked by relevance</span>
+								)}
+							</>
+						)}
+					</span>
+				)}
+			</div>
 
 			<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
 				{visible.map((g) => (
@@ -214,6 +289,10 @@ function GameCard({
 	const positivePct = ratingPct(game);
 	const releaseYear =
 		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+	const matchPct =
+		game.score !== undefined && game.score !== null
+			? Math.round(game.score * 100)
+			: null;
 	return (
 		<button
 			type="button"
@@ -233,11 +312,18 @@ function GameCard({
 						Installed
 					</span>
 				)}
-				{releaseYear && (
+				{matchPct !== null ? (
+					<span
+						className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-emerald-700/90 border border-emerald-600 text-white font-medium"
+						title="Hybrid keyword + semantic-vector relevance score"
+					>
+						{matchPct}% match
+					</span>
+				) : releaseYear ? (
 					<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
 						{releaseYear}
 					</span>
-				)}
+				) : null}
 			</div>
 			<div className="p-2.5">
 				<div className="text-xs font-medium text-zinc-100 line-clamp-2 leading-tight min-h-[2.25rem]">
