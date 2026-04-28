@@ -86,11 +86,6 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 	return (
 		<div>
 			<header className="mb-4 flex flex-wrap items-center gap-3">
-				<h1 className="text-lg font-semibold mr-3">
-					{platformFilter
-						? `${platformLabel(platformFilter)} library`
-						: "All games"}
-				</h1>
 				<input
 					type="text"
 					value={filter}
@@ -209,9 +204,3 @@ function ratingPct(game: {
 	return Math.round((game.positive / total) * 100);
 }
 
-function platformLabel(p: Platform): string {
-	if (p === "steam") return "Steam";
-	if (p === "epic") return "Epic Games";
-	if (p === "gog") return "GOG";
-	return p;
-}

@@ -60,20 +60,23 @@ export function GameDetail({
 		if (!game) return;
 		const owned = game.platforms.includes(platform);
 		if (!owned) return; // disabled buttons shouldn't fire
+		const ownership = game.ownership.find((o) => o.platform === platform);
+		const externalId = ownership?.external_id ?? String(game.appid);
 		const isInstalledHere = isInstalledFor(installed, platform, game);
 
 		if (!isInstalledHere) {
-			// Steam exposes a clean install URI; for Epic/GOG, opening the launcher
-			// URI lands the user on the game's page so they can install from there.
-			if (platform === "steam") {
-				await rpc.request.openUrl({ url: `steam://install/${game.appid}` });
-				return;
-			}
-			// fall through to the regular launch URI for epic/gog
+			const installUri =
+				platform === "steam"
+					? `steam://install/${game.appid}`
+					: platform === "epic"
+						? `com.epicgames.launcher://apps/${externalId}?action=install&silent=true`
+						: // GOG Galaxy has no documented install URI; opening the game's
+							// page is the closest — Galaxy renders the Install button there.
+							`goggalaxy://openGameView/${externalId}`;
+			await rpc.request.openUrl({ url: installUri });
+			return;
 		}
 
-		const ownership = game.ownership.find((o) => o.platform === platform);
-		const externalId = ownership?.external_id ?? String(game.appid);
 		const result = await rpc.request.launch({
 			platform,
 			externalId,
@@ -402,15 +405,15 @@ function LaunchRow({
 						state === "installed"
 							? `Launch on ${platformLabel(p)}`
 							: state === "owned"
-								? p === "steam"
-									? "Install with Steam"
-									: `Open in ${platformLabel(p)} launcher`
+								? `Install with ${platformLabel(p)}`
 								: platformLabel(p);
 					const tooltip =
 						state === "disabled"
 							? `Not in your ${platformLabel(p)} library`
 							: state === "owned"
-								? `Owned on ${platformLabel(p)} but not installed on this machine`
+								? p === "gog"
+									? `Owned on GOG but not installed — opens the game's page in GOG Galaxy where you can install`
+									: `Owned on ${platformLabel(p)} but not installed — opens the ${platformLabel(p)} install flow`
 								: `Launch via ${platformLabel(p)}`;
 					return (
 						<button
