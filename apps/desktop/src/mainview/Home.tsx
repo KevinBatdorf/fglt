@@ -186,7 +186,7 @@ function HeroPick({
 					onClick={onSelect}
 					className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-colors"
 				>
-					Open game →
+					View details →
 				</button>
 			</div>
 		</section>

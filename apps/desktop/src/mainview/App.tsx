@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AllGames } from "./AllGames";
 import { GameDetail } from "./GameDetail";
 import { Home } from "./Home";
 import {
@@ -36,17 +37,48 @@ function App() {
 	const [stats, setStats] = useState<Stats | null>(null);
 	const [installed, setInstalled] = useState<InstalledIndex | null>(null);
 	const [view, setView] = useState<View>({ kind: "home" });
+	const [history, setHistory] = useState<View[]>([]);
 	const [query, setQuery] = useState("");
-	const [platformFilter, setPlatformFilter] = useState<Platform | "">("");
 	const [recent, setRecent] = useState<string[]>(readRecent);
-	const [stack, setStack] = useState<number[]>([]);
 
 	useEffect(() => {
 		api.stats().then(setStats).catch(console.error);
 		rpc.request.getInstalledIndex({}).then(setInstalled).catch(console.error);
 	}, []);
 
-	// When user types into the search box, switch view to "search"
+	const navigate = useCallback(
+		(next: View) => {
+			setHistory((h) => [...h, view]);
+			setView(next);
+			if (next.kind === "search") setQuery(next.query);
+			else if (next.kind !== "search") setQuery("");
+		},
+		[view],
+	);
+
+	const back = useCallback(() => {
+		setHistory((h) => {
+			if (h.length === 0) return h;
+			const prev = h[h.length - 1];
+			setView(prev);
+			if (prev.kind === "search") setQuery(prev.query);
+			else setQuery("");
+			return h.slice(0, -1);
+		});
+	}, []);
+
+	const home = useCallback(() => {
+		setHistory([]);
+		setView({ kind: "home" });
+		setQuery("");
+	}, []);
+
+	const open = useCallback((appid: number) => {
+		navigate({ kind: "detail", appid });
+	}, [navigate]);
+
+	// Search box typing → switch view to search (without polluting history each
+	// keystroke). Empty query → home.
 	useEffect(() => {
 		const q = query.trim();
 		if (q.length === 0) {
@@ -54,11 +86,12 @@ function App() {
 			return;
 		}
 		if (view.kind !== "search" || view.query !== q) {
+			// Replace, don't push, while typing
 			setView({ kind: "search", query: q });
 		}
 	}, [query, view]);
 
-	// Persist a search to recents when one settles
+	// Settle search into recents
 	useEffect(() => {
 		if (view.kind !== "search") return;
 		const q = view.query;
@@ -73,52 +106,62 @@ function App() {
 		return () => clearTimeout(t);
 	}, [view]);
 
-	const navigate = useCallback((next: View) => {
-		setView(next);
-		setStack([]);
-		if (next.kind === "search") setQuery(next.query);
-		else if (next.kind === "home" || next.kind === "list" || next.kind === "filter") {
-			setQuery("");
-			setPlatformFilter("");
-		}
-	}, []);
+	// Keyboard: Alt+Left or Backspace = back; Escape = home (when not editing).
+	useEffect(() => {
+		const handler = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement | null;
+			const editing =
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement ||
+				target?.isContentEditable;
+			if (e.altKey && e.key === "ArrowLeft") {
+				e.preventDefault();
+				back();
+				return;
+			}
+			if (e.key === "Backspace" && !editing) {
+				e.preventDefault();
+				back();
+				return;
+			}
+			if (e.key === "Escape" && !editing) {
+				home();
+				return;
+			}
+		};
+		window.addEventListener("keydown", handler);
+		return () => window.removeEventListener("keydown", handler);
+	}, [back, home]);
 
-	const open = useCallback((appid: number) => {
-		setStack((s) => [...s, appid]);
-	}, []);
-
-	const back = useCallback(() => {
-		setStack((s) => s.slice(0, -1));
-	}, []);
-
-	const close = useCallback(() => setStack([]), []);
+	const platformCounts = stats?.platforms ?? {};
 
 	return (
 		<div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
 			<Sidebar
 				view={view}
-				onNavigate={navigate}
+				onNavigate={(v) => {
+					if (v.kind === view.kind && JSON.stringify(v) === JSON.stringify(view)) {
+						return;
+					}
+					navigate(v);
+				}}
 				recentSearches={recent}
 				onClearRecent={() => {
 					setRecent([]);
 					writeRecent([]);
 				}}
+				platformCounts={platformCounts}
 			/>
 
 			<div className="flex-1 min-w-0 flex flex-col">
 				<header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-					<div className="px-6 py-3.5 flex items-center gap-4 flex-wrap">
+					<div className="px-6 py-3.5 flex items-center gap-4">
 						<input
 							type="text"
 							placeholder="Search your library — vibe queries work too"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
-							className="flex-1 min-w-[260px] max-w-2xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
-						/>
-						<PlatformChips
-							platform={platformFilter}
-							setPlatform={setPlatformFilter}
-							stats={stats}
+							className="flex-1 max-w-2xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
 						/>
 					</div>
 					{stats && <StatsBar stats={stats} installed={installed} />}
@@ -127,61 +170,83 @@ function App() {
 				<main className="flex-1 px-6 py-6">
 					<MainView
 						view={view}
-						platformFilter={platformFilter}
 						installed={installed}
 						onSelectGame={open}
 						onPickVibe={(q) => {
 							setQuery(q);
-							setView({ kind: "search", query: q });
+							navigate({ kind: "search", query: q });
 						}}
+						onBack={back}
+						onHome={home}
+						canBack={history.length > 0}
 					/>
 				</main>
 			</div>
-
-			{stack.length > 0 && (
-				<GameDetail
-					stack={stack}
-					installed={installed}
-					onBack={back}
-					onClose={close}
-					onNavigate={open}
-				/>
-			)}
 		</div>
 	);
 }
 
 function MainView({
 	view,
-	platformFilter,
 	installed,
 	onSelectGame,
 	onPickVibe,
+	onBack,
+	onHome,
+	canBack,
 }: {
 	view: View;
-	platformFilter: Platform | "";
 	installed: InstalledIndex | null;
 	onSelectGame: (appid: number) => void;
 	onPickVibe: (q: string) => void;
+	onBack: () => void;
+	onHome: () => void;
+	canBack: boolean;
 }) {
 	if (view.kind === "home")
 		return (
 			<Home installed={installed} onSelectGame={onSelectGame} onPickVibe={onPickVibe} />
 		);
+	if (view.kind === "detail")
+		return (
+			<GameDetail
+				appid={view.appid}
+				installed={installed}
+				canBack={canBack}
+				onBack={onBack}
+				onHome={onHome}
+				onNavigate={onSelectGame}
+			/>
+		);
 	if (view.kind === "search")
 		return (
 			<SearchResults
 				query={view.query}
-				platform={platformFilter}
 				installed={installed}
 				onSelect={onSelectGame}
 			/>
 		);
-	if (view.kind === "filter")
+	if (view.kind === "filter") {
+		if (view.what === "all")
+			return (
+				<AllGames
+					platformFilter={null}
+					installed={installed}
+					onSelect={onSelectGame}
+				/>
+			);
 		return (
 			<FilterView
 				what={view.what}
-				platform={platformFilter}
+				installed={installed}
+				onSelect={onSelectGame}
+			/>
+		);
+	}
+	if (view.kind === "platform")
+		return (
+			<AllGames
+				platformFilter={view.platform}
 				installed={installed}
 				onSelect={onSelectGame}
 			/>
@@ -195,12 +260,10 @@ function MainView({
 
 function SearchResults({
 	query,
-	platform,
 	installed,
 	onSelect,
 }: {
 	query: string;
-	platform: Platform | "";
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
@@ -213,21 +276,14 @@ function SearchResults({
 		setLoading(true);
 		setError(null);
 		api
-			.library(
-				{
-					q: query,
-					platform: platform || undefined,
-					limit: 90,
-				},
-				ctrl.signal,
-			)
+			.library({ q: query, limit: 90 }, ctrl.signal)
 			.then((d) => setResults(d.results))
 			.catch((e) => {
 				if (e.name !== "AbortError") setError(e.message);
 			})
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
-	}, [query, platform]);
+	}, [query]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (loading && results.length === 0)
@@ -248,12 +304,10 @@ function SearchResults({
 
 function FilterView({
 	what,
-	platform,
 	installed,
 	onSelect,
 }: {
 	what: "unplayed" | "recent";
-	platform: Platform | "";
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
@@ -263,10 +317,7 @@ function FilterView({
 	useEffect(() => {
 		const ctrl = new AbortController();
 		setLoading(true);
-		const params: Record<string, string | number | undefined> = {
-			limit: 200,
-			platform: platform || undefined,
-		};
+		const params: Record<string, string | number | undefined> = { limit: 200 };
 		if (what === "unplayed") params.unplayed = "1";
 		if (what === "recent") params.min_playtime = 1;
 		api
@@ -283,7 +334,7 @@ function FilterView({
 			.catch(console.error)
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
-	}, [what, platform]);
+	}, [what]);
 
 	const title = what === "unplayed" ? "Unplayed" : "Recently played";
 	const subtitle =
@@ -445,45 +496,6 @@ function GameCard({
 				</div>
 			</div>
 		</button>
-	);
-}
-
-function PlatformChips({
-	platform,
-	setPlatform,
-	stats,
-}: {
-	platform: Platform | "";
-	setPlatform: (p: Platform | "") => void;
-	stats: Stats | null;
-}) {
-	const platforms: Platform[] = ["steam", "epic", "gog"];
-	return (
-		<div className="flex items-center gap-1.5 flex-wrap">
-			{platforms.map((p) => {
-				const active = platform === p;
-				const count = stats?.platforms[p];
-				return (
-					<button
-						type="button"
-						key={p}
-						onClick={() => setPlatform(active ? "" : p)}
-						className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-							active
-								? "bg-emerald-600 text-white"
-								: "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
-						}`}
-					>
-						{p}
-						{count !== undefined && (
-							<span className="ml-1 text-[10px] opacity-70 tabular-nums">
-								{count}
-							</span>
-						)}
-					</button>
-				);
-			})}
-		</div>
 	);
 }
 

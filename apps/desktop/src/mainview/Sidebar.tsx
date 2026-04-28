@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { type ListSummary, api } from "./lib/api";
+import type { Platform } from "../shared/types";
 
 export type View =
 	| { kind: "home" }
 	| { kind: "search"; query: string }
-	| { kind: "filter"; what: "unplayed" | "recent" }
-	| { kind: "list"; slug: string };
+	| { kind: "filter"; what: "unplayed" | "recent" | "all" }
+	| { kind: "platform"; platform: Platform }
+	| { kind: "list"; slug: string }
+	| { kind: "detail"; appid: number };
 
 interface Props {
 	view: View;
 	onNavigate: (view: View) => void;
 	recentSearches: string[];
 	onClearRecent: () => void;
+	platformCounts: Partial<Record<Platform, number>>;
 }
 
 export function Sidebar({
@@ -19,12 +23,12 @@ export function Sidebar({
 	onNavigate,
 	recentSearches,
 	onClearRecent,
+	platformCounts,
 }: Props) {
 	const [lists, setLists] = useState<ListSummary[] | null>(null);
 
 	useEffect(() => {
 		api.lists().then((d) => setLists(d.lists));
-		// Reload lists when navigating to a list view (membership might have changed)
 	}, []);
 
 	useEffect(() => {
@@ -32,10 +36,6 @@ export function Sidebar({
 			api.lists().then((d) => setLists(d.lists));
 		}
 	}, [view]);
-
-	const isHome = view.kind === "home";
-	const isUnplayed = view.kind === "filter" && view.what === "unplayed";
-	const isRecent = view.kind === "filter" && view.what === "recent";
 
 	return (
 		<aside className="w-56 shrink-0 h-screen sticky top-0 border-r border-zinc-800 bg-zinc-925 flex flex-col">
@@ -52,27 +52,42 @@ export function Sidebar({
 			<nav className="flex-1 overflow-y-auto py-3">
 				<Section title="Library">
 					<NavItem
-						active={isHome}
+						active={view.kind === "home"}
 						onClick={() => onNavigate({ kind: "home" })}
 						icon="🏠"
 						label="Home"
 					/>
 					<NavItem
-						active={isUnplayed}
-						onClick={() =>
-							onNavigate({ kind: "filter", what: "unplayed" })
-						}
+						active={view.kind === "filter" && view.what === "all"}
+						onClick={() => onNavigate({ kind: "filter", what: "all" })}
+						icon="📚"
+						label="All games"
+					/>
+					<NavItem
+						active={view.kind === "filter" && view.what === "unplayed"}
+						onClick={() => onNavigate({ kind: "filter", what: "unplayed" })}
 						icon="📥"
 						label="Unplayed"
 					/>
 					<NavItem
-						active={isRecent}
-						onClick={() =>
-							onNavigate({ kind: "filter", what: "recent" })
-						}
+						active={view.kind === "filter" && view.what === "recent"}
+						onClick={() => onNavigate({ kind: "filter", what: "recent" })}
 						icon="🕒"
 						label="Recently played"
 					/>
+				</Section>
+
+				<Section title="Platforms">
+					{(["steam", "epic", "gog"] as Platform[]).map((p) => (
+						<NavItem
+							key={p}
+							active={view.kind === "platform" && view.platform === p}
+							onClick={() => onNavigate({ kind: "platform", platform: p })}
+							icon={p === "steam" ? "🟦" : p === "epic" ? "⚫" : "🟣"}
+							label={p === "steam" ? "Steam" : p === "epic" ? "Epic Games" : "GOG"}
+							count={platformCounts[p]}
+						/>
+					))}
 				</Section>
 
 				<Section title="Lists">
