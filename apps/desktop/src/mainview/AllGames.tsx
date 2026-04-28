@@ -17,6 +17,8 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 	const [sort, setSort] = useState<SortKey>("name");
 	const [genre, setGenre] = useState<string>("");
 	const [filter, setFilter] = useState("");
+	const [searchOrder, setSearchOrder] = useState<number[] | null>(null);
+	const [searching, setSearching] = useState(false);
 
 	useEffect(() => {
 		const ctrl = new AbortController();
@@ -37,6 +39,40 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 		return () => ctrl.abort();
 	}, [platformFilter]);
 
+	// Hybrid (semantic + keyword) search via /library?q=, scoped to the
+	// current platform. Empty input clears searchOrder and the view falls back
+	// to the local sort/genre logic.
+	useEffect(() => {
+		const ctrl = new AbortController();
+		const q = filter.trim();
+		if (q.length === 0) {
+			setSearchOrder(null);
+			setSearching(false);
+			return;
+		}
+		setSearching(true);
+		const t = setTimeout(() => {
+			api
+				.library(
+					{
+						q,
+						platform: platformFilter ?? undefined,
+						limit: 200,
+					},
+					ctrl.signal,
+				)
+				.then((d) => setSearchOrder(d.results.map((g) => g.appid)))
+				.catch((e) => {
+					if (e.name !== "AbortError") console.warn("filter search failed", e);
+				})
+				.finally(() => setSearching(false));
+		}, 200);
+		return () => {
+			clearTimeout(t);
+			ctrl.abort();
+		};
+	}, [filter, platformFilter]);
+
 	const allGenres = useMemo(() => {
 		if (!allGames) return [] as string[];
 		const set = new Set<string>();
@@ -48,13 +84,27 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 
 	const visible = useMemo(() => {
 		if (!allGames) return [] as LibraryGame[];
-		const f = filter.trim().toLowerCase();
-		let out = allGames.filter((g) => {
-			if (genre && !(g.genres ?? []).includes(genre)) return false;
-			if (f && !g.name.toLowerCase().includes(f)) return false;
-			return true;
-		});
-		out = [...out].sort((a, b) => {
+
+		// Build a map for O(1) lookup, applying the genre filter inline.
+		const byId = new Map<number, LibraryGame>();
+		for (const g of allGames) {
+			if (genre && !(g.genres ?? []).includes(genre)) continue;
+			byId.set(g.appid, g);
+		}
+
+		// If the user has typed a search, intersect with /library results in
+		// relevance order; ignore the local sort dropdown.
+		if (searchOrder !== null) {
+			const out: LibraryGame[] = [];
+			for (const id of searchOrder) {
+				const g = byId.get(id);
+				if (g) out.push(g);
+			}
+			return out;
+		}
+
+		const out = [...byId.values()];
+		out.sort((a, b) => {
 			switch (sort) {
 				case "name":
 					return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
@@ -78,11 +128,13 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 			}
 		});
 		return out;
-	}, [allGames, sort, genre, filter]);
+	}, [allGames, sort, genre, searchOrder]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (!allGames)
 		return <div className="text-zinc-500 text-sm">Loading library…</div>;
+
+	const sortDisabled = searchOrder !== null;
 
 	return (
 		<div>
@@ -91,9 +143,9 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 					type="text"
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
-					placeholder="Filter by name…"
-					title="Substring match on game name. For semantic queries (e.g. 'games about eggs'), use the search bar in the header."
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-56"
+					placeholder="Search this view…"
+					title="Hybrid keyword + semantic vector search, scoped to the current view (platform / genre)."
+					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
 				/>
 				<select
 					value={genre}
@@ -110,7 +162,9 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 				<select
 					value={sort}
 					onChange={(e) => setSort(e.target.value as SortKey)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
+					disabled={sortDisabled}
+					title={sortDisabled ? "Search results are ranked by relevance" : ""}
+					className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-zinc-600 disabled:opacity-50"
 				>
 					<option value="name">Sort: A–Z</option>
 					<option value="playtime">Sort: Most played</option>
@@ -119,7 +173,16 @@ export function AllGames({ platformFilter, installed, onSelect }: Props) {
 					<option value="rating">Sort: Highest rated</option>
 				</select>
 				<span className="ml-auto text-xs text-zinc-500 tabular-nums">
-					{visible.length.toLocaleString()} of {allGames.length.toLocaleString()}
+					{searching ? "searching…" : null}
+					{!searching && (
+						<>
+							{visible.length.toLocaleString()} of{" "}
+							{allGames.length.toLocaleString()}
+							{searchOrder !== null && (
+								<span className="ml-1 text-zinc-600">· ranked by relevance</span>
+							)}
+						</>
+					)}
 				</span>
 			</header>
 
@@ -201,4 +264,3 @@ function ratingPct(game: {
 	if (total === 0) return null;
 	return Math.round((game.positive / total) * 100);
 }
-

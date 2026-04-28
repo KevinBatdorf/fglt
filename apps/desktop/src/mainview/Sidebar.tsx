@@ -217,13 +217,19 @@ export function Sidebar({
 			</nav>
 
 			{/* Sticky bottom: Settings */}
-			<div className="border-t border-zinc-800">
-				<NavItem
-					active={view.kind === "settings"}
+			<div className="border-t border-zinc-800 py-2">
+				<button
+					type="button"
 					onClick={() => onNavigate({ kind: "settings" })}
-					icon="⚙"
-					label="Settings"
-				/>
+					className={`w-full h-10 px-3 flex items-center gap-2.5 text-sm text-left transition-colors ${
+						view.kind === "settings"
+							? "bg-zinc-800 text-zinc-100"
+							: "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+					}`}
+				>
+					<span className="w-5 text-center text-base leading-none">⚙</span>
+					<span className="flex-1 truncate">Settings</span>
+				</button>
 			</div>
 		</aside>
 	);

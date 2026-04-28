@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AllGames } from "./AllGames";
 import { Discover } from "./Discover";
 import { GameDetail } from "./GameDetail";
@@ -43,6 +43,13 @@ function App() {
 	const [history, setHistory] = useState<View[]>([]);
 	const [query, setQuery] = useState("");
 	const [recent, setRecent] = useState<string[]>(readRecent);
+	const mainRef = useRef<HTMLElement>(null);
+
+	// Reset scroll on every view change so search results / list switches
+	// don't leave the user mid-page.
+	useEffect(() => {
+		mainRef.current?.scrollTo({ top: 0, behavior: "auto" });
+	}, [view]);
 
 	const refreshStats = useCallback(() => {
 		api.stats().then(setStats).catch(console.error);
@@ -175,7 +182,7 @@ function App() {
 					/>
 				</header>
 
-				<main className="flex-1 px-6 py-6">
+				<main ref={mainRef} className="flex-1 px-6 py-6 overflow-y-auto">
 					<MainView
 						view={view}
 						stats={stats}
@@ -356,7 +363,7 @@ function FilterView({
 		const ctrl = new AbortController();
 		setLoading(true);
 		const params: Record<string, string | number | undefined> = {
-			limit: what === "recently_added" ? 5000 : 200,
+			limit: 5000,
 		};
 		if (what === "unplayed") params.unplayed = "1";
 		if (what === "recently_played") params.min_playtime = 1;

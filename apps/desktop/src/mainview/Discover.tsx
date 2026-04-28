@@ -12,7 +12,8 @@ interface Props {
 const COPY: Record<Props["what"], { title: string; subtitle: string }> = {
 	trending: {
 		title: "Trending in your library",
-		subtitle: "Sorted by peak concurrent users — what the world is playing now",
+		subtitle:
+			"Games you own, sorted by Steam peak-concurrent-player count (snapshot from when each game was enriched — coarse cultural-heat proxy, not real-time)",
 	},
 	random: {
 		title: "Random picks",
