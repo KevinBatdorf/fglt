@@ -107,6 +107,13 @@ interface CachedVibes {
 	source: 'static' | 'llm';
 }
 
+interface VibesResponse extends CachedVibes {
+	/** True if any AI provider is configured. UI uses this to hide the Refresh button. */
+	ai_enabled: boolean;
+	/** Set when serving stale cache while a background regen is running. */
+	stale?: boolean;
+}
+
 async function readCache(raw: postgres.Sql): Promise<CachedVibes | null> {
 	const [row] =
 		await raw`SELECT value, updated FROM meta WHERE key = ${CACHE_KEY} LIMIT 1`;
@@ -246,37 +253,58 @@ Return ONLY the JSON object. (regen=${stamp})`;
 export function vibesRoutes(raw: postgres.Sql) {
 	const app = new Hono();
 
-	app.get('/vibes', async (c) => {
-		const cached = await readCache(raw);
-		if (cached && !cacheIsStale(cached)) return c.json(cached);
+	const respond = (body: CachedVibes & { stale?: boolean }): VibesResponse => ({
+		...body,
+		ai_enabled: isOllamaEnabled(),
+	});
 
-		// Stale or empty — kick off background regen, serve whatever we have.
+	app.get('/vibes', async (c) => {
+		// No AI provider configured → just serve the static list, never poke
+		// any background regen. The UI uses ai_enabled to hide the Refresh
+		// button so it can't trigger an empty action.
+		if (!isOllamaEnabled()) {
+			return c.json(
+				respond({
+					vibes: STATIC_DEFAULTS,
+					generated_at: new Date().toISOString(),
+					source: 'static',
+				}),
+			);
+		}
+
+		const cached = await readCache(raw);
+		if (cached && !cacheIsStale(cached)) return c.json(respond(cached));
+
 		void generate(raw)
 			.then((next) => writeCache(raw, next))
 			.catch((e) => console.error('[vibes] background regen failed:', e));
 
-		if (cached) return c.json({ ...cached, stale: true });
+		if (cached) return c.json(respond({ ...cached, stale: true }));
 
-		// First-ever call: synchronously generate (or fall back to static).
 		try {
 			const next = await generate(raw);
 			await writeCache(raw, next);
-			return c.json(next);
+			return c.json(respond(next));
 		} catch (e) {
 			console.error('[vibes] initial generate failed:', e);
-			return c.json({
-				vibes: STATIC_DEFAULTS,
-				generated_at: new Date().toISOString(),
-				source: 'static',
-			});
+			return c.json(
+				respond({
+					vibes: STATIC_DEFAULTS,
+					generated_at: new Date().toISOString(),
+					source: 'static',
+				}),
+			);
 		}
 	});
 
 	app.post('/vibes/regenerate', async (c) => {
+		if (!isOllamaEnabled()) {
+			return c.json({ error: 'AI provider not configured' }, 503);
+		}
 		try {
 			const next = await generate(raw);
 			await writeCache(raw, next);
-			return c.json(next);
+			return c.json(respond(next));
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'unknown';
 			return c.json({ error: msg }, 502);

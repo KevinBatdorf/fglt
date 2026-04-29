@@ -18,8 +18,14 @@ client/server pair).
 - **Runtime:** Bun
 - **API:** Hono
 - **DB:** Postgres 17 + pgvector + pg_trgm (Drizzle for the schema)
-- **Embeddings:** Ollama (`nomic-embed-text`, 768 dims) — talks to the host's
-  Ollama via `host.docker.internal:11434`
+- **AI provider:** Vercel AI SDK + `@ai-sdk/openai-compatible` — works
+  with Ollama (default), OpenAI, Groq, Together, or any OpenAI-compatible
+  endpoint. Configured via `AI_BASE_URL` / `AI_API_KEY` / `AI_CHAT_MODEL` /
+  `AI_EMBED_MODEL` (falls back to `OLLAMA_URL` for backward compat).
+- **Embeddings:** default `nomic-embed-text` (768 dims) via Ollama, but
+  swap to `text-embedding-3-small` or any other model by changing
+  `AI_EMBED_MODEL`. Schema's `vector(768)` column has to match the
+  model's output dimension.
 - **External data:** YouTube Data API v3 for per-game videos. OpenCritic /
   IGDB / PCGamingWiki / ProtonDB are planned and slot into the same
   `/games/:appid/refresh` endpoint.
@@ -53,9 +59,18 @@ doesn't fit the cron model. See "Multi-platform ownership" below.
 
    Local `/mcp` is open — public auth lives in the `expose-tunnels` proxy
    (see "Connecting from Claude" below).
-2. Make sure Ollama has the embed model pulled on the host:
+2. Configure your AI provider (defaults to Ollama). For Ollama, pull the
+   models you want:
    ```bash
-   ollama pull nomic-embed-text
+   ollama pull nomic-embed-text   # embeddings
+   ollama pull qwen3:14b          # vibe-chip generation (any chat model works)
+   ```
+   For a different provider, set in `.env`:
+   ```
+   AI_BASE_URL=https://api.openai.com/v1
+   AI_API_KEY=sk-...
+   AI_CHAT_MODEL=gpt-4o-mini
+   AI_EMBED_MODEL=text-embedding-3-small
    ```
 3. Bring everything up:
    ```bash

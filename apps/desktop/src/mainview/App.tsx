@@ -15,7 +15,7 @@ import {
 import { rpc } from "./lib/rpc";
 import { type View, Sidebar } from "./Sidebar";
 import { VIBES } from "./lib/vibes";
-import type { InstalledIndex, Platform } from "../shared/types";
+import type { InstalledIndex } from "../shared/types";
 
 const RECENT_KEY = "seg.recentSearches.v1";
 const RECENT_MAX = 8;
@@ -184,22 +184,16 @@ function App() {
 			/>
 
 			<div className="flex-1 min-w-0 flex flex-col">
-				<header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-					<div className="px-6 py-3.5">
-						<input
-							type="text"
-							placeholder="Search your library — vibe queries work too"
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="w-full max-w-3xl bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+				<header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur px-6 pt-5 pb-4">
+					<div className="rounded-xl border border-zinc-800 bg-zinc-925 px-4 pt-3 pb-3">
+						<SearchBar query={query} setQuery={setQuery} />
+						<VibeRow
+							onPick={(q) => {
+								setQuery(q);
+								navigate({ kind: "search", query: q });
+							}}
 						/>
 					</div>
-					<VibeRow
-						onPick={(q) => {
-							setQuery(q);
-							navigate({ kind: "search", query: q });
-						}}
-					/>
 				</header>
 
 				<main ref={mainRef} className="flex-1 px-6 py-6 overflow-y-auto">
@@ -223,35 +217,121 @@ function App() {
 	);
 }
 
-function VibeRow({ onPick }: { onPick: (query: string) => void }) {
-	const [vibes, setVibes] = useState<{ label: string; query: string; emoji: string }[]>(VIBES);
-	const [refreshing, setRefreshing] = useState(false);
+function SearchBar({
+	query,
+	setQuery,
+}: {
+	query: string;
+	setQuery: (q: string) => void;
+}) {
+	const [vibesAi, setVibesAi] = useState({ enabled: false, refreshing: false });
+	const [, forceVibesUpdate] = useState(0);
 
 	useEffect(() => {
+		api
+			.vibes()
+			.then((d) => setVibesAi((s) => ({ ...s, enabled: d.ai_enabled })))
+			.catch(() => {
+				/* leave disabled */
+			});
+	}, []);
+
+	async function handleRegenerate() {
+		setVibesAi((s) => ({ ...s, refreshing: true }));
+		try {
+			await api.regenerateVibes();
+			// Bump VibeRow so it refetches; cheap signal via window event.
+			window.dispatchEvent(new CustomEvent("seg:vibes:regenerated"));
+			forceVibesUpdate((n) => n + 1);
+		} catch (e) {
+			console.error("vibes regenerate failed:", e);
+		} finally {
+			setVibesAi((s) => ({ ...s, refreshing: false }));
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-3">
+			<div className="relative flex-1">
+				<svg
+					viewBox="0 0 16 16"
+					aria-hidden
+					className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none"
+				>
+					<title>Search</title>
+					<circle
+						cx="7"
+						cy="7"
+						r="4.5"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+					/>
+					<path
+						d="M10.5 10.5l3 3"
+						stroke="currentColor"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+					/>
+				</svg>
+				<input
+					type="text"
+					placeholder="Search your library — try a vibe like 'cozy puzzle'"
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+				/>
+				{query && (
+					<button
+						type="button"
+						onClick={() => setQuery("")}
+						aria-label="Clear search"
+						title="Clear (Esc)"
+						className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 flex items-center justify-center text-sm leading-none"
+					>
+						✕
+					</button>
+				)}
+			</div>
+			{vibesAi.enabled && (
+				<button
+					type="button"
+					onClick={handleRegenerate}
+					disabled={vibesAi.refreshing}
+					title="Regenerate vibe chips via your AI provider, grounded in your library's tags"
+					className="shrink-0 text-xs px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+				>
+					<span aria-hidden>↻</span>
+					<span>{vibesAi.refreshing ? "Generating new vibes…" : "Generate fresh vibes"}</span>
+				</button>
+			)}
+		</div>
+	);
+}
+
+function VibeRow({ onPick }: { onPick: (query: string) => void }) {
+	const [vibes, setVibes] = useState<{ label: string; query: string; emoji: string }[]>(VIBES);
+
+	const reload = useCallback(() => {
 		api
 			.vibes()
 			.then((d) => {
 				if (d.vibes && d.vibes.length > 0) setVibes(d.vibes);
 			})
 			.catch(() => {
-				/* keep static defaults */
+				/* keep current chips */
 			});
 	}, []);
 
-	async function handleRefresh() {
-		setRefreshing(true);
-		try {
-			const d = await api.regenerateVibes();
-			if (d.vibes && d.vibes.length > 0) setVibes(d.vibes);
-		} catch (e) {
-			console.error("vibes regenerate failed:", e);
-		} finally {
-			setRefreshing(false);
-		}
-	}
+	useEffect(() => {
+		reload();
+		const handler = () => reload();
+		window.addEventListener("seg:vibes:regenerated", handler);
+		return () => window.removeEventListener("seg:vibes:regenerated", handler);
+	}, [reload]);
 
 	return (
-		<div className="px-6 pb-3 flex flex-wrap items-center gap-1.5">
+		<div className="mt-3 flex flex-wrap gap-1.5">
 			{vibes.map((v) => (
 				<button
 					type="button"
@@ -263,15 +343,6 @@ function VibeRow({ onPick }: { onPick: (query: string) => void }) {
 					{v.label}
 				</button>
 			))}
-			<button
-				type="button"
-				onClick={handleRefresh}
-				disabled={refreshing}
-				title={refreshing ? "Generating new vibes…" : "Regenerate via Ollama (uses your library's tags)"}
-				className="text-[11px] px-2.5 py-1 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
-			>
-				{refreshing ? "↻ …" : "↻ Refresh"}
-			</button>
 		</div>
 	);
 }

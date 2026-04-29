@@ -14,7 +14,7 @@ Each game is enriched with:
 - **SteamSpy** — estimated owner range, positive/negative review counts, average/median playtime, peak concurrent users, **user tags with vote counts** (the highest-signal signal for vibe queries)
 - **HowLongToBeat** — completion times for main story, main+extras, completionist
 - **"More like this" graph** — Steam's own per-game recommendation list, scraped from the store page
-- **Embeddings** — 768-dim Ollama vectors over `name + top-15 tags + short_description`
+- **Embeddings** — 768-dim vectors over `name + top-15 tags + short_description`. Default model is `nomic-embed-text` via Ollama, but the AI helper supports any OpenAI-compatible provider (`AI_BASE_URL` env).
 - **YouTube videos** — top ~10 walkthroughs / let's-plays / trailers per game, surfaced on `/games/:appid` (seed runs ~100 games/day until Google's 10k-unit daily quota; newest games processed first)
 
 Search is hybrid: keyword FTS + vector cosine similarity, blended via weighted
@@ -154,5 +154,5 @@ per-store metadata (`external_id`, `title_at_source`, `acquired_at`,
 - Epic/GOG ownership is synced on the host with `bun run sync:epic` / `sync:gog` (manual, browser-auth required once).
 - Enrichment runs every 15 minutes in batches of 50; for ~3000 games this takes several hours from cold start. `GET /stats` shows progress.
 - YouTube video discovery runs daily at 06:30 UTC, ~100 games/day until quota; newest games first. Full library seed takes ~24 days at the floor.
-- Ollama must have `nomic-embed-text` pulled. Vector search degrades gracefully to FTS-only if Ollama is unreachable.
+- The AI provider must have an embedding model loaded (default `nomic-embed-text` via Ollama; any OpenAI-compatible provider works via env vars). Vector search degrades gracefully to FTS-only if the provider is unreachable.
 - The MCP server (7 tools — `search_library`, `find_similar`, `get_game`, `recently_played`, `unplayed_pile`, `get_stats`, `sync_owned`) is exposed publicly via OAuth at `https://steam.share.cool.omg.lol/mcp` (the same `clients.json` as the anna connector). Enrichment, embedding, and video discovery are automatic via cron containers; no manual data-fetch tool is exposed via MCP — for that, use the `/games/:appid/refresh` REST endpoint.

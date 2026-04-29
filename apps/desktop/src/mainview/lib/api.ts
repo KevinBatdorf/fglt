@@ -166,6 +166,7 @@ export interface VibesResponse {
 	vibes: VibeChip[];
 	generated_at: string;
 	source: "static" | "llm";
+	ai_enabled: boolean;
 	stale?: boolean;
 }
 

@@ -81,6 +81,36 @@ When adding a new external source: drop a `<source>_fetched_at` column on
 handler in `src/routes/refresh.ts`, and add a sync container to
 docker-compose with the same supercronic-with-startup-run pattern.
 
+## AI provider (embeddings + vibes)
+
+Embeddings + the LLM-generated home-page "vibe chips" go through the Vercel
+AI SDK + `@ai-sdk/openai-compatible`. Any OpenAI-compatible endpoint works:
+
+```sh
+# Ollama (default; auto-derived from OLLAMA_URL if AI_BASE_URL is empty)
+AI_BASE_URL=http://host.docker.internal:11434/v1
+AI_API_KEY=                       # unused, but the helper requires a non-empty value
+AI_CHAT_MODEL=qwen3:14b
+AI_EMBED_MODEL=nomic-embed-text
+
+# OpenAI
+AI_BASE_URL=https://api.openai.com/v1
+AI_API_KEY=sk-...
+AI_CHAT_MODEL=gpt-4o-mini
+AI_EMBED_MODEL=text-embedding-3-small
+
+# Groq, Together, etc. — any OpenAI-compatible base URL
+```
+
+The single helper module is `src/lib/ai.ts` (`chat()` + `embed()` +
+`embedSingle()`). `src/lib/ollama.ts` is a thin re-export shim kept for
+backward compat.
+
+If no provider is configured, `/vibes` falls back to a static list of 16
+hand-curated chips and the UI hides the Refresh button entirely
+(`ai_enabled: false` in the response). Embedding-dependent features
+(hybrid search, `/similar`) error out cleanly — keyword FTS still works.
+
 ## Stack
 
 - **Runtime:** Bun
@@ -138,6 +168,7 @@ When asked for status, run these and report the results:
 - `JSONB` columns: stringify and cast (`${JSON.stringify(obj)}::jsonb`); `raw.json()` does not exist
 - Steam appdetails endpoint rate-limits at ~200 req / 5 min — enricher sleeps 1500ms between games
 - Embedding doc per game = `name + top-15 tags by votes + short_description` (skip detailed_description, it's marketing copy noise)
-- Vector dim is 768 (`nomic-embed-text`); changing the model means changing the schema
+- Vector dim is 768 (`nomic-embed-text`); changing the embed model means changing the `vector(768)` column in `init.sql` and the schema (and re-running enrichment to regenerate embeddings)
+- Per-game `ccu` is captured by SteamSpy at enrichment time. The `steamspy-refresher` cron container re-pulls it (and tags / review counts) on a 7-day window; live trending uses Steam's `ISteamUserStats/GetNumberOfCurrentPlayers` instead
 - YouTube quota = 10,000 units/day, 100 units per `search.list` call → ~100 games/day max
 - Cron containers should follow the "startup-run + supercronic" pattern (see `enricher` and `youtube-syncer` commands) so a rebuild backfills immediately instead of waiting for the next scheduled fire
