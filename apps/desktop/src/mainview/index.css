@@ -12,5 +12,36 @@
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
 		text-rendering: optimizeLegibility;
+		background: #09090b; /* zinc-950 — prevent white flash before React mounts */
+		color-scheme: dark;
+	}
+
+	/* Thin, recessed, dark scrollbars that fade in only over scrollable
+	   surfaces. Matches the look of native Win11 / macOS overlay scrollbars
+	   without giving up explicit drag affordance. */
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(161, 161, 170, 0.25) transparent;
+	}
+	*::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	*::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	*::-webkit-scrollbar-thumb {
+		background: rgba(161, 161, 170, 0.18);
+		border: 2px solid transparent;
+		background-clip: padding-box;
+		border-radius: 8px;
+	}
+	*::-webkit-scrollbar-thumb:hover {
+		background: rgba(161, 161, 170, 0.4);
+		border: 2px solid transparent;
+		background-clip: padding-box;
+	}
+	*::-webkit-scrollbar-corner {
+		background: transparent;
 	}
 }

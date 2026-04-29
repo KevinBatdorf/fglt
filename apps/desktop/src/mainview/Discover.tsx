@@ -70,7 +70,7 @@ export function Discover({ what, installed, onSelect }: Props) {
 				<div className="text-zinc-500 text-sm">Nothing to show yet.</div>
 			)}
 			{data && games.length > 0 && (
-				<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+				<div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
 					{games.map((g) => (
 						<Card
 							key={g.appid}

@@ -185,16 +185,14 @@ function App() {
 			/>
 
 			<div className="flex-1 min-w-0 flex flex-col">
-				<header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur px-6 pt-4 pb-3">
-					<div className="rounded-xl border border-zinc-800 bg-zinc-925 px-4 pt-3 pb-3">
-						<SearchBar query={query} setQuery={setQuery} />
-						<VibeRow
-							onPick={(q) => {
-								setQuery(q);
-								navigate({ kind: "search", query: q });
-							}}
-						/>
-					</div>
+				<header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur border-b border-zinc-800/80 px-6 pt-3 pb-3">
+					<SearchBar query={query} setQuery={setQuery} />
+					<VibeRow
+						onPick={(q) => {
+							setQuery(q);
+							navigate({ kind: "search", query: q });
+						}}
+					/>
 				</header>
 
 				<main ref={mainRef} className="flex-1 px-6 pt-2 pb-8 overflow-y-auto">
@@ -625,7 +623,7 @@ function GameGrid({
 	onSelect: (appid: number) => void;
 }) {
 	return (
-		<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+		<div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
 			{games.map((g) => (
 				<GameCard
 					key={g.appid}

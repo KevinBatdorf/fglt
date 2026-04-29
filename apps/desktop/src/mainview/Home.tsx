@@ -200,7 +200,7 @@ function Section({
 	return (
 		<section>
 			<SectionHeader title={title} subtitle={subtitle} />
-			<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+			<div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
 				{games.slice(0, 6).map((g) => (
 					<TileCard
 						key={g.appid}
