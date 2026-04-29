@@ -3,7 +3,9 @@ import { GameImage } from "./GameImage";
 import { type ActivityResponse, type Stats, api } from "./lib/api";
 import {
 	getRecentlyAddedMonths,
+	getVibesEnabled,
 	setRecentlyAddedMonths,
+	setVibesEnabled,
 } from "./lib/prefs";
 
 interface Props {
@@ -17,10 +19,30 @@ export function Settings({ stats, onStatsRefresh }: Props) {
 	const [syncing, setSyncing] = useState(false);
 	const [syncMsg, setSyncMsg] = useState<string | null>(null);
 	const [recentMonths, setRecentMonths] = useState(getRecentlyAddedMonths());
+	const [vibesShown, setVibesShown] = useState(getVibesEnabled());
+	const [hidden, setHidden] = useState<string[]>([]);
+	const [allGenres, setAllGenres] = useState<{ name: string; games: number }[]>([]);
+	const [hiddenSaving, setHiddenSaving] = useState(false);
 
 	useEffect(() => {
 		api.activity().then(setActivity).catch((e) => setActivityErr(e.message));
+		api.hiddenGenres().then((r) => setHidden(r.hidden_genres)).catch(() => {});
+		api.genres().then((r) => setAllGenres(r.genres)).catch(() => {});
 	}, []);
+
+	async function saveHidden(next: string[]) {
+		setHiddenSaving(true);
+		const prev = hidden;
+		setHidden(next);
+		try {
+			const r = await api.setHiddenGenres(next);
+			setHidden(r.hidden_genres);
+		} catch {
+			setHidden(prev);
+		} finally {
+			setHiddenSaving(false);
+		}
+	}
 
 	async function handleSync() {
 		setSyncing(true);
@@ -110,6 +132,29 @@ export function Settings({ stats, onStatsRefresh }: Props) {
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+					Vibe chips
+				</h2>
+				<label className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center gap-3 text-sm text-zinc-300 cursor-pointer">
+					<input
+						type="checkbox"
+						checked={vibesShown}
+						onChange={(e) => {
+							setVibesShown(e.target.checked);
+							setVibesEnabled(e.target.checked);
+						}}
+						className="w-4 h-4 accent-emerald-600"
+					/>
+					<span className="flex-1">
+						Show the vibe chip row under the search bar
+					</span>
+				</label>
+				<p className="text-xs text-zinc-500 mt-2">
+					When off, the header shows only the search input. Generated chips are still cached server-side and reappear when re-enabled.
+				</p>
+			</section>
+
+			<section>
+				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
 					Recently added window
 				</h2>
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center gap-3 text-sm text-zinc-300">
@@ -160,36 +205,65 @@ bun run sync:gog                       # rematch and upsert ownership`}
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
-					Filters
+					Hidden genres
 				</h2>
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-2 text-sm text-zinc-300">
-					<div className="font-medium">Hide non-game genres (always on)</div>
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3 text-sm text-zinc-300">
 					<p className="text-xs text-zinc-500">
-						Curated views (home, trending, recommended, etc.) hide Steam apps
-						with these genres so benchmarks and creator tools don't anchor
-						recommendations:
+						Games tagged with any of these genres are excluded from curated
+						views (home, trending, recommended, random). Click × to remove,
+						pick from the dropdown to add.
 					</p>
-					<div className="flex flex-wrap gap-1.5 mt-1">
-						{[
-							"Utilities",
-							"Software Training",
-							"Web Publishing",
-							"Audio Production",
-							"Video Production",
-							"Animation & Modeling",
-							"Game Development",
-							"Photo Editing",
-							"Education",
-							"Design & Illustration",
-							"Documentary",
-						].map((g) => (
-							<span
-								key={g}
-								className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300"
-							>
-								{g}
+					<div className="flex flex-wrap gap-1.5">
+						{hidden.length === 0 && (
+							<span className="text-xs text-zinc-500 italic">
+								No genres hidden — every owned app shows up everywhere.
 							</span>
+						)}
+						{hidden.map((g) => (
+							<button
+								type="button"
+								key={g}
+								onClick={() => saveHidden(hidden.filter((x) => x !== g))}
+								disabled={hiddenSaving}
+								className="group inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50"
+								title="Remove"
+							>
+								<span>{g}</span>
+								<span className="text-zinc-500 group-hover:text-zinc-200">
+									×
+								</span>
+							</button>
 						))}
+					</div>
+					<div className="flex items-center gap-2">
+						<select
+							value=""
+							onChange={(e) => {
+								const v = e.target.value;
+								if (v && !hidden.includes(v)) saveHidden([...hidden, v].sort());
+							}}
+							disabled={hiddenSaving}
+							className="bg-zinc-950 border border-zinc-800 rounded h-9 px-2 text-sm text-zinc-200 disabled:opacity-50 focus:outline-none focus:border-zinc-600"
+						>
+							<option value="">Add a genre to hide…</option>
+							{allGenres
+								.filter((g) => !hidden.includes(g.name))
+								.map((g) => (
+									<option key={g.name} value={g.name}>
+										{g.name} ({g.games.toLocaleString()})
+									</option>
+								))}
+						</select>
+						{hidden.length > 0 && (
+							<button
+								type="button"
+								onClick={() => saveHidden([])}
+								disabled={hiddenSaving}
+								className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+							>
+								Clear all
+							</button>
+						)}
 					</div>
 				</div>
 			</section>

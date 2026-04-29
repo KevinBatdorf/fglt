@@ -13,6 +13,7 @@ import { refreshRoutes } from './routes/refresh';
 import { similarRoutes } from './routes/similar';
 import { statsRoutes } from './routes/stats';
 import { syncRoutes } from './routes/sync';
+import { settingsRoutes } from './routes/settings';
 import { tagsRoutes } from './routes/tags';
 import { vibesRoutes } from './routes/vibes';
 
@@ -42,6 +43,7 @@ app.route('/', listsRoutes(raw));
 app.route('/', activityRoutes(raw));
 app.route('/', tagsRoutes(raw));
 app.route('/', vibesRoutes(raw));
+app.route('/', settingsRoutes(raw));
 mcpRoutes(app);
 
 app.get('/', (c) =>

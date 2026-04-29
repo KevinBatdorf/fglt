@@ -14,6 +14,7 @@ import {
 } from "./lib/api";
 import { rpc } from "./lib/rpc";
 import { type View, Sidebar } from "./Sidebar";
+import { getVibesEnabled } from "./lib/prefs";
 import { VIBES } from "./lib/vibes";
 import type { InstalledIndex } from "../shared/types";
 
@@ -184,7 +185,7 @@ function App() {
 			/>
 
 			<div className="flex-1 min-w-0 flex flex-col">
-				<header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur px-6 pt-5 pb-4">
+				<header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur px-6 pt-4 pb-3">
 					<div className="rounded-xl border border-zinc-800 bg-zinc-925 px-4 pt-3 pb-3">
 						<SearchBar query={query} setQuery={setQuery} />
 						<VibeRow
@@ -196,7 +197,7 @@ function App() {
 					</div>
 				</header>
 
-				<main ref={mainRef} className="flex-1 px-6 py-6 overflow-y-auto">
+				<main ref={mainRef} className="flex-1 px-6 pt-2 pb-8 overflow-y-auto">
 					<MainView
 						view={view}
 						stats={stats}
@@ -226,6 +227,7 @@ function SearchBar({
 }) {
 	const [vibesAi, setVibesAi] = useState({ enabled: false, refreshing: false });
 	const [, forceVibesUpdate] = useState(0);
+	const [vibesShown, setVibesShown] = useState(getVibesEnabled());
 
 	useEffect(() => {
 		api
@@ -234,6 +236,9 @@ function SearchBar({
 			.catch(() => {
 				/* leave disabled */
 			});
+		const handler = () => setVibesShown(getVibesEnabled());
+		window.addEventListener("seg:prefs:vibes-toggled", handler);
+		return () => window.removeEventListener("seg:prefs:vibes-toggled", handler);
 	}, []);
 
 	async function handleRegenerate() {
@@ -279,7 +284,7 @@ function SearchBar({
 					placeholder="Search your library — try a vibe like 'cozy puzzle'"
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
-					className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 py-2 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+					className="w-full h-9 bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-10 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
 				/>
 				{query && (
 					<button
@@ -293,16 +298,21 @@ function SearchBar({
 					</button>
 				)}
 			</div>
-			{vibesAi.enabled && (
+			{vibesAi.enabled && vibesShown && (
 				<button
 					type="button"
 					onClick={handleRegenerate}
 					disabled={vibesAi.refreshing}
 					title="Regenerate vibe chips via your AI provider, grounded in your library's tags"
-					className="shrink-0 text-xs px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+					className="shrink-0 h-9 px-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 transition-colors flex items-center gap-1.5 enabled:hover:bg-zinc-800 enabled:hover:border-zinc-700 enabled:hover:text-zinc-100 disabled:cursor-default disabled:text-zinc-500"
 				>
-					<span aria-hidden>↻</span>
-					<span>{vibesAi.refreshing ? "Generating new vibes…" : "Generate fresh vibes"}</span>
+					<span
+						aria-hidden
+						className={vibesAi.refreshing ? "animate-spin inline-block" : ""}
+					>
+						↻
+					</span>
+					<span>{vibesAi.refreshing ? "Generating…" : "New vibes"}</span>
 				</button>
 			)}
 		</div>
@@ -311,6 +321,7 @@ function SearchBar({
 
 function VibeRow({ onPick }: { onPick: (query: string) => void }) {
 	const [vibes, setVibes] = useState<{ label: string; query: string; emoji: string }[]>(VIBES);
+	const [shown, setShown] = useState(getVibesEnabled());
 
 	const reload = useCallback(() => {
 		api
@@ -325,10 +336,17 @@ function VibeRow({ onPick }: { onPick: (query: string) => void }) {
 
 	useEffect(() => {
 		reload();
-		const handler = () => reload();
-		window.addEventListener("seg:vibes:regenerated", handler);
-		return () => window.removeEventListener("seg:vibes:regenerated", handler);
+		const onRegen = () => reload();
+		const onToggle = () => setShown(getVibesEnabled());
+		window.addEventListener("seg:vibes:regenerated", onRegen);
+		window.addEventListener("seg:prefs:vibes-toggled", onToggle);
+		return () => {
+			window.removeEventListener("seg:vibes:regenerated", onRegen);
+			window.removeEventListener("seg:prefs:vibes-toggled", onToggle);
+		};
 	}, [reload]);
+
+	if (!shown) return null;
 
 	return (
 		<div className="mt-3 flex flex-wrap gap-1.5">

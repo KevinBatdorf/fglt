@@ -1,6 +1,6 @@
-# Steam Library API
+# SEG — find a game like that.
 
-Self-hosted Postgres + pgvector database of an owned Steam library, enriched
+Self-hosted Postgres + pgvector database of an owned game library, enriched
 with Steam Store metadata, SteamSpy tags, HowLongToBeat completion times, and
 the Steam "more like this" graph. Hybrid keyword + semantic search via Ollama.
 

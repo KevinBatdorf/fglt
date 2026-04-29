@@ -24,7 +24,7 @@ const url = await getMainViewUrl();
 const rpc = defineSegRpc();
 
 const mainWindow = new BrowserWindow({
-	title: "SEG",
+	title: "SEG — find a game like that.",
 	url,
 	rpc,
 	frame: {

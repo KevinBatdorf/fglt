@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
 import { getCurrentPlayers } from '../lib/steam-live';
+import { readHiddenGenres } from './settings';
 
 /**
  * GET /curate — pre-baked dashboard for the home page.
@@ -36,22 +37,13 @@ export function curateRoutes(raw: postgres.Sql) {
 			positive, negative, owners_estimate,
 			hltb_main, hltb_extra, metacritic
 		`;
-		// Steam treats benchmark/creator-tool apps as "games" with genres like
-		// Utilities. Exclude them everywhere we surface "what to play".
-		const NON_GAME_GENRES = [
-			'Utilities',
-			'Software Training',
-			'Web Publishing',
-			'Audio Production',
-			'Video Production',
-			'Animation & Modeling',
-			'Game Development',
-			'Photo Editing',
-			'Education',
-			'Design & Illustration',
-			'Documentary',
-		];
-		const isGame = raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`;
+		// User-controlled hidden genres (Settings → Hidden genres). Stored in
+		// the meta table; defaults seeded by migration 008.
+		const hiddenGenres = await readHiddenGenres(raw);
+		const isGame =
+			hiddenGenres.length > 0
+				? raw`(g.genres IS NULL OR NOT (g.genres && ${hiddenGenres}::text[]))`
+				: raw`true`;
 		const platformsJoin = `
 			LEFT JOIN (
 				SELECT appid, array_agg(platform ORDER BY platform) AS platforms

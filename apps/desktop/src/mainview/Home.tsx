@@ -37,7 +37,7 @@ export function Home({ installed, onSelectGame }: Props) {
 		);
 
 	return (
-		<div className="space-y-10 pb-12">
+		<div className="space-y-7 pb-8">
 			{data.game_of_the_day && (
 				<HeroPick
 					game={data.game_of_the_day}

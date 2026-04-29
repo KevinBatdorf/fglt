@@ -1,4 +1,4 @@
-# Steam Library API
+# SEG — find a game like that.
 
 A self-hosted Postgres + pgvector database of your owned game library across
 **Steam, Epic, and GOG**, enriched with Steam Store metadata, SteamSpy tags +

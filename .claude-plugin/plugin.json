@@ -1,6 +1,6 @@
 {
 	"name": "steam-library",
-	"description": "Search, browse, and get recommendations from your owned Steam library — with appdetails, SteamSpy tags, HLTB completion times, and semantic vector search via a self-hosted API.",
+	"description": "SEG — find a game like that. Search and recommend across your Steam/Epic/GOG library with hybrid keyword + vector similarity, SteamSpy tags, and HLTB times via a self-hosted API.",
 	"version": "0.1.0",
 	"author": {
 		"name": "klanker"

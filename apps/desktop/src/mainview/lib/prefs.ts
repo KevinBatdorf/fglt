@@ -5,9 +5,11 @@
 
 const KEY = {
 	recentlyAddedMonths: "seg.prefs.recentlyAddedMonths.v1",
+	vibesEnabled: "seg.prefs.vibesEnabled.v1",
 } as const;
 
 export const RECENTLY_ADDED_MONTHS_DEFAULT = 2;
+export const VIBES_ENABLED_DEFAULT = true;
 
 export function getRecentlyAddedMonths(): number {
 	try {
@@ -26,5 +28,24 @@ export function setRecentlyAddedMonths(months: number): void {
 		localStorage.setItem(KEY.recentlyAddedMonths, String(months));
 	} catch {
 		/* ignore quota errors etc. */
+	}
+}
+
+export function getVibesEnabled(): boolean {
+	try {
+		const raw = localStorage.getItem(KEY.vibesEnabled);
+		if (raw === null) return VIBES_ENABLED_DEFAULT;
+		return raw === "true";
+	} catch {
+		return VIBES_ENABLED_DEFAULT;
+	}
+}
+
+export function setVibesEnabled(enabled: boolean): void {
+	try {
+		localStorage.setItem(KEY.vibesEnabled, enabled ? "true" : "false");
+		window.dispatchEvent(new CustomEvent("seg:prefs:vibes-toggled"));
+	} catch {
+		/* ignore */
 	}
 }

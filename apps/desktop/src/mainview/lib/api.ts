@@ -267,6 +267,16 @@ export const api = {
 			signal,
 		);
 	},
+	hiddenGenres: (signal?: AbortSignal) =>
+		get<{ hidden_genres: string[] }>("/settings/hidden-genres", signal),
+	setHiddenGenres: (list: string[]) =>
+		jsonCall<{ hidden_genres: string[] }>(
+			"/settings/hidden-genres",
+			"POST",
+			{ hidden_genres: list },
+		),
+	genres: (signal?: AbortSignal) =>
+		get<{ genres: { name: string; games: number }[] }>("/genres", signal),
 };
 
 /**

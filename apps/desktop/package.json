@@ -1,7 +1,7 @@
 {
 	"name": "seg-desktop",
 	"version": "0.1.0",
-	"description": "Electrobun desktop UI for the SEG library API",
+	"description": "SEG — find a game like that. Electrobun desktop UI over a multi-store library API.",
 	"private": true,
 	"type": "module",
 	"scripts": {

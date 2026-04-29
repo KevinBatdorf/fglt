@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
 import { embedSingle, isOllamaEnabled, toVectorLiteral } from '../lib/ollama';
+import { readHiddenGenres } from './settings';
 
 /**
  * GET /library         — list/search owned games
@@ -132,23 +133,14 @@ export function libraryRoutes(raw: postgres.Sql) {
 			conds.push(
 				raw`g.appid IN (SELECT appid FROM platform_ownership WHERE platform = ${platform})`,
 			);
-		// Reuse the utilities filter from /curate so we don't roll a benchmark.
-		const NON_GAME_GENRES = [
-			'Utilities',
-			'Software Training',
-			'Web Publishing',
-			'Audio Production',
-			'Video Production',
-			'Animation & Modeling',
-			'Game Development',
-			'Photo Editing',
-			'Education',
-			'Design & Illustration',
-			'Documentary',
-		];
-		conds.push(
-			raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`,
-		);
+		// Reuse the user-configurable hidden-genres filter from settings so we
+		// don't roll a benchmark.
+		const hiddenGenres = await readHiddenGenres(raw);
+		if (hiddenGenres.length > 0) {
+			conds.push(
+				raw`(g.genres IS NULL OR NOT (g.genres && ${hiddenGenres}::text[]))`,
+			);
+		}
 		const where = conds.reduce((acc, c2, i) =>
 			i === 0 ? c2 : raw`${acc} AND ${c2}`,
 		);
