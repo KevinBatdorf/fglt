@@ -24,9 +24,14 @@ services:
       PORT: '${PORT:-3110}'
       STEAM_API_KEY: '${STEAM_API_KEY:-}'
       STEAM_ID: '${STEAM_ID:-}'
+      AI_BASE_URL: '${AI_BASE_URL:-}'
+      AI_API_KEY: '${AI_API_KEY:-}'
+      AI_PROVIDER_NAME: '${AI_PROVIDER_NAME:-ollama}'
+      AI_CHAT_MODEL: '${AI_CHAT_MODEL:-qwen3:14b}'
+      AI_EMBED_MODEL: '${AI_EMBED_MODEL:-nomic-embed-text}'
       OLLAMA_URL: '${OLLAMA_URL:-http://host.docker.internal:11434}'
       OLLAMA_EMBED_MODEL: '${OLLAMA_EMBED_MODEL:-nomic-embed-text}'
-      OLLAMA_CHAT_MODEL: '${OLLAMA_CHAT_MODEL:-llama3.2}'
+      OLLAMA_CHAT_MODEL: '${OLLAMA_CHAT_MODEL:-qwen3:14b}'
       YOUTUBE_API_KEY: '${YOUTUBE_API_KEY:-}'
     command: bun run /app/src/index.ts
     ports:

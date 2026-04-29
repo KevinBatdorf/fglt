@@ -13,7 +13,10 @@ import { refreshSteamSpyOne } from '../src/routes/enrich';
 
 const BATCH = Number.parseInt(process.env.STEAMSPY_BATCH ?? '500', 10);
 const DELAY_MS = Number.parseInt(process.env.STEAMSPY_DELAY_MS ?? '1100', 10);
-const REFRESH_DAYS = Number.parseInt(process.env.STEAMSPY_REFRESH_DAYS ?? '7', 10);
+const REFRESH_DAYS = Number.parseInt(
+	process.env.STEAMSPY_REFRESH_DAYS ?? '7',
+	10,
+);
 
 async function main() {
 	console.log(

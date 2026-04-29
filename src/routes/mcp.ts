@@ -174,7 +174,10 @@ function registerTools(server: McpServer, app: Hono) {
 				: [];
 			return {
 				content: [
-					{ type: 'text', text: JSON.stringify({ ...data, results: sorted }, null, 2) },
+					{
+						type: 'text',
+						text: JSON.stringify({ ...data, results: sorted }, null, 2),
+					},
 				],
 			};
 		},
@@ -253,7 +256,6 @@ function registerTools(server: McpServer, app: Hono) {
 			};
 		},
 	);
-
 }
 
 async function createMcpPair(app: Hono) {

@@ -21,7 +21,8 @@ export function refreshRoutes(raw: postgres.Sql) {
 		const appid = Number.parseInt(c.req.param('appid'), 10);
 		if (!Number.isFinite(appid)) return c.json({ error: 'bad appid' }, 400);
 
-		const [game] = await raw`SELECT name FROM games WHERE appid = ${appid} LIMIT 1`;
+		const [game] =
+			await raw`SELECT name FROM games WHERE appid = ${appid} LIMIT 1`;
 		if (!game) return c.json({ error: 'not found' }, 404);
 		const name = game.name as string;
 

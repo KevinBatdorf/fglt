@@ -125,10 +125,8 @@ export async function fetchAppDetails(
 	if (!res.ok) {
 		throw new Error(`appdetails failed: ${res.status}`);
 	}
-	const data: Record<
-		string,
-		{ success: boolean; data?: AppDetails }
-	> = await res.json();
+	const data: Record<string, { success: boolean; data?: AppDetails }> =
+		await res.json();
 	const entry = data[String(appid)];
 	if (!entry?.success || !entry.data) return null;
 	return entry.data;

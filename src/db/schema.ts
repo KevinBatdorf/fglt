@@ -62,8 +62,12 @@ export const games = pgTable(
 
 		embedding: vector('embedding', { dimensions: 768 }),
 
-		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+		created_at: timestamp('created_at', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+		updated_at: timestamp('updated_at', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
 		enriched_at: timestamp('enriched_at', { withTimezone: true }),
 		embedded_at: timestamp('embedded_at', { withTimezone: true }),
 		youtube_fetched_at: timestamp('youtube_fetched_at', { withTimezone: true }),
@@ -122,7 +126,9 @@ export const game_videos = pgTable(
 		published_at: timestamp('published_at', { withTimezone: true }),
 		rank: integer('rank').notNull().default(0),
 		query_used: text('query_used'),
-		fetched_at: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+		fetched_at: timestamp('fetched_at', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
 	},
 	(t) => [
 		primaryKey({ columns: [t.appid, t.video_id] }),
@@ -146,8 +152,12 @@ export const platform_ownership = pgTable(
 		acquired_at: timestamp('acquired_at', { withTimezone: true }),
 		playtime_min: integer('playtime_min').notNull().default(0),
 		last_played: timestamp('last_played', { withTimezone: true }),
-		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+		created_at: timestamp('created_at', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+		updated_at: timestamp('updated_at', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
 	},
 	(t) => [
 		primaryKey({ columns: [t.appid, t.platform] }),
@@ -162,8 +172,12 @@ export const unmatched_ownership = pgTable(
 		external_id: text('external_id').notNull(),
 		title_at_source: text('title_at_source').notNull(),
 		developer: text('developer'),
-		first_seen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
-		last_seen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
+		first_seen: timestamp('first_seen', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+		last_seen: timestamp('last_seen', { withTimezone: true })
+			.notNull()
+			.defaultNow(),
 		resolved_appid: integer('resolved_appid'),
 	},
 	(t) => [primaryKey({ columns: [t.platform, t.external_id] })],

@@ -39,17 +39,17 @@ export function curateRoutes(raw: postgres.Sql) {
 		// Steam treats benchmark/creator-tool apps as "games" with genres like
 		// Utilities. Exclude them everywhere we surface "what to play".
 		const NON_GAME_GENRES = [
-			"Utilities",
-			"Software Training",
-			"Web Publishing",
-			"Audio Production",
-			"Video Production",
-			"Animation & Modeling",
-			"Game Development",
-			"Photo Editing",
-			"Education",
-			"Design & Illustration",
-			"Documentary",
+			'Utilities',
+			'Software Training',
+			'Web Publishing',
+			'Audio Production',
+			'Video Production',
+			'Animation & Modeling',
+			'Game Development',
+			'Photo Editing',
+			'Education',
+			'Design & Illustration',
+			'Documentary',
 		];
 		const isGame = raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`;
 		const platformsJoin = `
@@ -126,9 +126,8 @@ export function curateRoutes(raw: postgres.Sql) {
 				AND ${isGame}
 			ORDER BY g.appid ASC
 		`;
-		const gameOfTheDay = goodPool.length > 0
-			? goodPool[seedNum % goodPool.length]
-			: null;
+		const gameOfTheDay =
+			goodPool.length > 0 ? goodPool[seedNum % goodPool.length] : null;
 
 		// Picks tonight — small random sample of unplayed
 		const picksTonight = await raw`
@@ -197,22 +196,86 @@ export function curateRoutes(raw: postgres.Sql) {
 			});
 
 		const byVibe: { label: string; query: string; emoji: string }[] = [
-			{ label: 'Cozy & contemplative', query: 'cozy puzzle game with story', emoji: '🍵' },
-			{ label: 'Indie horror', query: 'indie first person horror atmospheric', emoji: '🕯️' },
-			{ label: 'Cyberpunk', query: 'cyberpunk dystopian neon hacker', emoji: '🌆' },
-			{ label: 'Roguelike runs', query: 'roguelike deck builder run-based', emoji: '🎲' },
-			{ label: 'Soulslike', query: 'soulslike fast combat parry difficult', emoji: '⚔️' },
-			{ label: 'Walking sim', query: 'narrative walking simulator atmospheric story', emoji: '🚶' },
-			{ label: 'Couch co-op', query: 'split-screen couch co-op friends', emoji: '🛋️' },
-			{ label: 'Retro pixel', query: 'retro pixel art 16-bit platformer', emoji: '👾' },
-			{ label: 'Survival craft', query: 'open world survival craft base building', emoji: '🪓' },
-			{ label: 'Sci-fi exploration', query: 'atmospheric sci-fi alien exploration', emoji: '🛸' },
-			{ label: 'Stealth', query: 'stealth assassin shadow infiltrate', emoji: '🗡️' },
-			{ label: 'City builder', query: 'city builder management simulation', emoji: '🏙️' },
-			{ label: 'Detective', query: 'detective noir mystery investigation dialog', emoji: '🔎' },
-			{ label: 'Hand-drawn', query: 'beautiful hand-drawn art adventure', emoji: '🎨' },
-			{ label: 'Speedrun fast', query: 'fast movement speedrun arcade', emoji: '💨' },
-			{ label: 'Existential RPG', query: 'existential dread story-driven RPG', emoji: '🌒' },
+			{
+				label: 'Cozy & contemplative',
+				query: 'cozy puzzle game with story',
+				emoji: '🍵',
+			},
+			{
+				label: 'Indie horror',
+				query: 'indie first person horror atmospheric',
+				emoji: '🕯️',
+			},
+			{
+				label: 'Cyberpunk',
+				query: 'cyberpunk dystopian neon hacker',
+				emoji: '🌆',
+			},
+			{
+				label: 'Roguelike runs',
+				query: 'roguelike deck builder run-based',
+				emoji: '🎲',
+			},
+			{
+				label: 'Soulslike',
+				query: 'soulslike fast combat parry difficult',
+				emoji: '⚔️',
+			},
+			{
+				label: 'Walking sim',
+				query: 'narrative walking simulator atmospheric story',
+				emoji: '🚶',
+			},
+			{
+				label: 'Couch co-op',
+				query: 'split-screen couch co-op friends',
+				emoji: '🛋️',
+			},
+			{
+				label: 'Retro pixel',
+				query: 'retro pixel art 16-bit platformer',
+				emoji: '👾',
+			},
+			{
+				label: 'Survival craft',
+				query: 'open world survival craft base building',
+				emoji: '🪓',
+			},
+			{
+				label: 'Sci-fi exploration',
+				query: 'atmospheric sci-fi alien exploration',
+				emoji: '🛸',
+			},
+			{
+				label: 'Stealth',
+				query: 'stealth assassin shadow infiltrate',
+				emoji: '🗡️',
+			},
+			{
+				label: 'City builder',
+				query: 'city builder management simulation',
+				emoji: '🏙️',
+			},
+			{
+				label: 'Detective',
+				query: 'detective noir mystery investigation dialog',
+				emoji: '🔎',
+			},
+			{
+				label: 'Hand-drawn',
+				query: 'beautiful hand-drawn art adventure',
+				emoji: '🎨',
+			},
+			{
+				label: 'Speedrun fast',
+				query: 'fast movement speedrun arcade',
+				emoji: '💨',
+			},
+			{
+				label: 'Existential RPG',
+				query: 'existential dread story-driven RPG',
+				emoji: '🌒',
+			},
 		];
 
 		return c.json({

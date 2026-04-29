@@ -28,7 +28,9 @@ async function getSearchToken(): Promise<string> {
 		signal: AbortSignal.timeout(20_000),
 	});
 	const html = await home.text();
-	const scriptMatch = html.match(/\/_next\/static\/chunks\/pages\/_app-[^"]+\.js/);
+	const scriptMatch = html.match(
+		/\/_next\/static\/chunks\/pages\/_app-[^"]+\.js/,
+	);
 	if (!scriptMatch) throw new Error('hltb: app script not found');
 	const scriptUrl = `https://howlongtobeat.com${scriptMatch[0]}`;
 	const js = await (
@@ -102,7 +104,9 @@ export async function fetchHLTB(name: string): Promise<HLTBResult | null> {
 
 	// Fields are in seconds.
 	const toHours = (s?: number) =>
-		typeof s === 'number' && s > 0 ? Math.round((s / 3600) * 10) / 10 : undefined;
+		typeof s === 'number' && s > 0
+			? Math.round((s / 3600) * 10) / 10
+			: undefined;
 
 	return {
 		main: toHours(first.comp_main),

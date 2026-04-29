@@ -20,7 +20,9 @@ if (!code) {
 			'[auth-gog] re-auth by visiting the URL below and re-running with the code:',
 		);
 	} else {
-		console.log('[auth-gog] not authed yet. Open this URL, sign in, then look at');
+		console.log(
+			'[auth-gog] not authed yet. Open this URL, sign in, then look at',
+		);
 		console.log('[auth-gog] the redirected URL — copy the `code` query param:');
 	}
 	console.log('');

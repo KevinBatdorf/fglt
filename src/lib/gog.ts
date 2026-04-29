@@ -66,7 +66,9 @@ async function postToken(params: URLSearchParams): Promise<TokenResponse> {
 	for (const [k, v] of params) url.searchParams.set(k, v);
 	const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 	if (!res.ok) {
-		throw new Error(`GOG token endpoint failed: ${res.status} ${await res.text()}`);
+		throw new Error(
+			`GOG token endpoint failed: ${res.status} ${await res.text()}`,
+		);
 	}
 	return (await res.json()) as TokenResponse;
 }
@@ -137,7 +139,11 @@ export async function getValidTokens(): Promise<GogTokens> {
 async function fetchProductsPage(
 	tokens: GogTokens,
 	page: number,
-): Promise<{ products: GogProduct[]; totalPages: number; totalProducts: number }> {
+): Promise<{
+	products: GogProduct[];
+	totalPages: number;
+	totalProducts: number;
+}> {
 	const url = new URL(`${EMBED_BASE}/account/getFilteredProducts`);
 	url.searchParams.set('mediaType', '1'); // games (vs. movies)
 	url.searchParams.set('page', String(page));

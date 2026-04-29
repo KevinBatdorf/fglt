@@ -37,6 +37,8 @@ export function GameDetail({
 		setGame(null);
 		setError(null);
 		setVectorSimilar(null);
+		setRefreshResult(null);
+		setRefreshing(false);
 		api
 			.game(appid, ctrl.signal)
 			.then(setGame)

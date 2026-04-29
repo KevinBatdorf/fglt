@@ -8,13 +8,13 @@
  * tier-based rescans (TODO: needs parsed release_date) will keep new releases fresh.
  */
 import { raw } from '../src/db';
+import { sleep } from '../src/lib/sleep';
 import {
 	buildSearchQuery,
 	isYouTubeEnabled,
 	searchVideos,
 	YouTubeQuotaError,
 } from '../src/lib/youtube';
-import { sleep } from '../src/lib/sleep';
 
 const BATCH = Number.parseInt(process.env.YOUTUBE_BATCH ?? '120', 10);
 const PER_GAME = Number.parseInt(process.env.YOUTUBE_PER_GAME ?? '10', 10);
@@ -56,7 +56,9 @@ async function main() {
 		await raw.end();
 		return;
 	}
-	console.log(`[youtube] starting at ${new Date().toISOString()} (batch=${BATCH})`);
+	console.log(
+		`[youtube] starting at ${new Date().toISOString()} (batch=${BATCH})`,
+	);
 
 	const rows = await raw`
 		SELECT appid, name FROM games
@@ -80,7 +82,9 @@ async function main() {
 			console.log(`[youtube] ${appid} ${name} -> ${count} videos`);
 		} catch (e) {
 			if (e instanceof YouTubeQuotaError) {
-				console.log(`[youtube] quota exceeded at game ${appid} (${name}) — stopping cleanly`);
+				console.log(
+					`[youtube] quota exceeded at game ${appid} (${name}) — stopping cleanly`,
+				);
 				break;
 			}
 			failed++;

@@ -56,8 +56,7 @@ export function enrichRoutes(raw: postgres.Sql) {
 	});
 
 	app.post('/embed', async (c) => {
-		if (!isOllamaEnabled())
-			return c.json({ error: 'OLLAMA_URL not set' }, 503);
+		if (!isOllamaEnabled()) return c.json({ error: 'OLLAMA_URL not set' }, 503);
 		const limit = clamp(
 			Number.parseInt(c.req.query('limit') ?? '50', 10) || 50,
 			1,

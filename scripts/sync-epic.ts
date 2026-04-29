@@ -9,7 +9,7 @@
  * Resolves each Epic title to a Steam appid via storesearch. Confident matches
  * land in `platform_ownership`; misses go to `unmatched_ownership` for review.
  */
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { raw } from '../src/db';
@@ -56,7 +56,9 @@ function fetchEpicLibrary(): EpicGame[] {
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	if (result.status !== 0) {
-		throw new Error(`legendary list failed (${result.status}): ${result.stderr.toString()}`);
+		throw new Error(
+			`legendary list failed (${result.status}): ${result.stderr.toString()}`,
+		);
 	}
 	const all = JSON.parse(result.stdout.toString()) as EpicGame[];
 	return all.filter((g) =>

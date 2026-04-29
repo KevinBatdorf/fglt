@@ -146,7 +146,9 @@ export function libraryRoutes(raw: postgres.Sql) {
 			'Design & Illustration',
 			'Documentary',
 		];
-		conds.push(raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`);
+		conds.push(
+			raw`(g.genres IS NULL OR NOT (g.genres && ${NON_GAME_GENRES}::text[]))`,
+		);
 		const where = conds.reduce((acc, c2, i) =>
 			i === 0 ? c2 : raw`${acc} AND ${c2}`,
 		);
@@ -195,11 +197,20 @@ export function libraryRoutes(raw: postgres.Sql) {
 			ORDER BY l.is_system DESC, l.created_at ASC
 		`;
 		const platforms = ownership.map((o) => o.platform as string);
-		const { embedding: _emb, search: _s, ...rest } = game as Record<
-			string,
-			unknown
-		>;
-		return c.json({ ...rest, platforms, ownership, tags, similar, videos, lists });
+		const {
+			embedding: _emb,
+			search: _s,
+			...rest
+		} = game as Record<string, unknown>;
+		return c.json({
+			...rest,
+			platforms,
+			ownership,
+			tags,
+			similar,
+			videos,
+			lists,
+		});
 	});
 
 	return app;

@@ -13,7 +13,9 @@ async function main() {
 		await raw.end();
 		return;
 	}
-	console.log(`[embed] starting at ${new Date().toISOString()} (batch=${BATCH})`);
+	console.log(
+		`[embed] starting at ${new Date().toISOString()} (batch=${BATCH})`,
+	);
 	const rows = await raw`
 		SELECT appid, name FROM games
 		WHERE enriched_at IS NOT NULL AND embedded_at IS NULL

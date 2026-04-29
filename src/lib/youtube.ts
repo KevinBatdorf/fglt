@@ -47,7 +47,11 @@ interface SearchItem {
 
 interface SearchResponse {
 	items?: SearchItem[];
-	error?: { code: number; message: string; errors?: Array<{ reason?: string }> };
+	error?: {
+		code: number;
+		message: string;
+		errors?: Array<{ reason?: string }>;
+	};
 }
 
 export function isYouTubeEnabled(): boolean {

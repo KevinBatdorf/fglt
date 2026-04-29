@@ -63,7 +63,9 @@ function similarity(query: string, candidate: string): number {
 	return tokenJaccard(q, c);
 }
 
-export async function searchSteamStore(term: string): Promise<StoreSearchItem[]> {
+export async function searchSteamStore(
+	term: string,
+): Promise<StoreSearchItem[]> {
 	const url = new URL(STORESEARCH_URL);
 	url.searchParams.set('term', term);
 	url.searchParams.set('l', 'english');
@@ -87,7 +89,15 @@ export async function matchSteamAppid(title: string): Promise<MatchResult> {
 	candidates.sort((a, b) => b.score - a.score);
 	const top = candidates[0];
 	if (!top || top.score < ACCEPT_THRESHOLD) {
-		return { appid: null, confidence: top?.score ?? 0, candidates: candidates.slice(0, 5) };
+		return {
+			appid: null,
+			confidence: top?.score ?? 0,
+			candidates: candidates.slice(0, 5),
+		};
 	}
-	return { appid: top.appid, confidence: top.score, candidates: candidates.slice(0, 5) };
+	return {
+		appid: top.appid,
+		confidence: top.score,
+		candidates: candidates.slice(0, 5),
+	};
 }

@@ -3,8 +3,8 @@
  * Container: `steam-syncer` (default daily at 06:00 local).
  */
 import { raw } from '../src/db';
-import { upsertOwnedGames } from '../src/routes/sync';
 import { fetchOwnedGames } from '../src/lib/steam';
+import { upsertOwnedGames } from '../src/routes/sync';
 
 async function main() {
 	console.log(`[sync] starting at ${new Date().toISOString()}`);

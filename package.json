@@ -27,7 +27,9 @@
 		"typescript": "^5"
 	},
 	"dependencies": {
+		"@ai-sdk/openai-compatible": "^2.0.42",
 		"@modelcontextprotocol/sdk": "^1.26.0",
+		"ai": "^6.0.169",
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.11.10",
 		"node-html-parser": "^7.0.1",

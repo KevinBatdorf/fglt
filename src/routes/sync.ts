@@ -34,10 +34,17 @@ export function syncRoutes(raw: postgres.Sql) {
 export async function upsertOwnedGames(
 	raw: postgres.Sql,
 	games: Awaited<ReturnType<typeof fetchOwnedGames>>,
-): Promise<{ inserted: number; updated: number; total: number; removed: number }> {
-	if (games.length === 0) return { inserted: 0, updated: 0, total: 0, removed: 0 };
+): Promise<{
+	inserted: number;
+	updated: number;
+	total: number;
+	removed: number;
+}> {
+	if (games.length === 0)
+		return { inserted: 0, updated: 0, total: 0, removed: 0 };
 
-	const beforeRows = await raw`SELECT COUNT(*)::int AS c FROM platform_ownership WHERE platform = 'steam'`;
+	const beforeRows =
+		await raw`SELECT COUNT(*)::int AS c FROM platform_ownership WHERE platform = 'steam'`;
 	const before = (beforeRows[0]?.c as number) ?? 0;
 
 	const currentAppids = games.map((g) => g.appid);
@@ -80,7 +87,8 @@ export async function upsertOwnedGames(
 		RETURNING appid
 	`;
 
-	const afterRows = await raw`SELECT COUNT(*)::int AS c FROM platform_ownership WHERE platform = 'steam'`;
+	const afterRows =
+		await raw`SELECT COUNT(*)::int AS c FROM platform_ownership WHERE platform = 'steam'`;
 	const after = (afterRows[0]?.c as number) ?? 0;
 
 	return {

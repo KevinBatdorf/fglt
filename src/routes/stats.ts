@@ -23,7 +23,8 @@ export function statsRoutes(raw: postgres.Sql) {
 			ORDER BY count DESC
 		`;
 		const platforms: Record<string, number> = {};
-		for (const r of platformRows) platforms[r.platform as string] = r.count as number;
+		for (const r of platformRows)
+			platforms[r.platform as string] = r.count as number;
 
 		const [{ multi_platform }] = await raw`
 			SELECT COUNT(*)::int AS multi_platform FROM (
