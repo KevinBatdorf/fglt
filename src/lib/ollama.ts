@@ -51,3 +51,33 @@ export async function embedSingle(text: string): Promise<Float32Array> {
 export function toVectorLiteral(v: Float32Array | number[]): string {
 	return `[${Array.from(v).join(',')}]`;
 }
+
+const OLLAMA_CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL || 'qwen3:14b';
+
+/**
+ * Send a chat-completion prompt to Ollama. Uses the configured chat model
+ * (`OLLAMA_CHAT_MODEL`, default `llama3.2`). Throws on any non-OK response.
+ */
+export async function chat(
+	prompt: string,
+	opts: { json?: boolean; model?: string; temperature?: number } = {},
+): Promise<string> {
+	if (!OLLAMA_URL) throw new Error('OLLAMA_URL not configured');
+	const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			model: opts.model ?? OLLAMA_CHAT_MODEL,
+			prompt,
+			stream: false,
+			format: opts.json ? 'json' : undefined,
+			options: { temperature: opts.temperature ?? 0.8 },
+		}),
+		signal: AbortSignal.timeout(120_000),
+	});
+	if (!res.ok) {
+		throw new Error(`Ollama chat failed (${res.status}): ${await res.text()}`);
+	}
+	const data = (await res.json()) as { response: string };
+	return data.response;
+}

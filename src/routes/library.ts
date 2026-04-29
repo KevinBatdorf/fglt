@@ -53,6 +53,25 @@ export function libraryRoutes(raw: postgres.Sql) {
 		if (q.length > 0 && !vec)
 			conds.push(raw`g.search @@ websearch_to_tsquery('english', ${q})`);
 
+		// `recently_added=1` shows only games added AFTER the initial setup
+		// (skipping the bulk Steam/Epic/GOG sync rows) and within a recent
+		// window (default 2 months, override via ?within_months=).
+		if (c.req.query('recently_added') === '1') {
+			const [marker] = await raw`
+				SELECT value FROM meta WHERE key = 'initial_setup_until' LIMIT 1
+			`;
+			if (marker?.value) {
+				conds.push(raw`g.created_at > ${String(marker.value)}::timestamptz`);
+			}
+			const monthsRaw = c.req.query('within_months');
+			const months = monthsRaw
+				? Math.min(Math.max(Number.parseInt(monthsRaw, 10) || 2, 1), 60)
+				: 2;
+			conds.push(
+				raw`g.created_at > now() - (${months}::int * INTERVAL '1 month')`,
+			);
+		}
+
 		const where = conds.reduce((acc, cond, i) =>
 			i === 0 ? cond : raw`${acc} AND ${cond}`,
 		);
@@ -82,6 +101,7 @@ export function libraryRoutes(raw: postgres.Sql) {
 				g.playtime_min, g.playtime_2wk, g.last_played,
 				g.positive, g.negative, g.owners_estimate,
 				g.hltb_main, g.hltb_extra, g.metacritic,
+				g.created_at,
 				COALESCE(po.platforms, ARRAY[]::text[]) AS platforms,
 				${scoreExpr} AS score
 			FROM games g

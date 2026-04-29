@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { GameImage } from "./GameImage";
 import { type ActivityResponse, type Stats, api } from "./lib/api";
+import {
+	getRecentlyAddedMonths,
+	setRecentlyAddedMonths,
+} from "./lib/prefs";
 
 interface Props {
 	stats: Stats | null;
@@ -12,6 +16,7 @@ export function Settings({ stats, onStatsRefresh }: Props) {
 	const [activityErr, setActivityErr] = useState<string | null>(null);
 	const [syncing, setSyncing] = useState(false);
 	const [syncMsg, setSyncMsg] = useState<string | null>(null);
+	const [recentMonths, setRecentMonths] = useState(getRecentlyAddedMonths());
 
 	useEffect(() => {
 		api.activity().then(setActivity).catch((e) => setActivityErr(e.message));
@@ -101,6 +106,34 @@ export function Settings({ stats, onStatsRefresh }: Props) {
 						<div className="text-xs text-zinc-500 font-mono">{syncMsg}</div>
 					)}
 				</div>
+			</section>
+
+			<section>
+				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+					Recently added window
+				</h2>
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center gap-3 text-sm text-zinc-300">
+					<span>Show games added within the last</span>
+					<input
+						type="number"
+						min={1}
+						max={60}
+						value={recentMonths}
+						onChange={(e) => {
+							const n = Number.parseInt(e.target.value, 10);
+							if (Number.isFinite(n)) {
+								const clamped = Math.min(Math.max(n, 1), 60);
+								setRecentMonths(clamped);
+								setRecentlyAddedMonths(clamped);
+							}
+						}}
+						className="w-16 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm tabular-nums focus:outline-none focus:border-zinc-600"
+					/>
+					<span>{recentMonths === 1 ? "month" : "months"}.</span>
+				</div>
+				<p className="text-xs text-zinc-500 mt-2">
+					Applies to the "Recently added" sidebar entry. Default 2 months.
+				</p>
 			</section>
 
 			<section>

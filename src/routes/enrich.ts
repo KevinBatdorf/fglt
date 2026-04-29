@@ -136,29 +136,7 @@ export async function enrichOne(
 
 	// SteamSpy (tags + ownership/playtime/reviews)
 	try {
-		const spy = await fetchSteamSpy(appid);
-		if (spy) {
-			await raw`
-				UPDATE games SET
-					owners_estimate = ${spy.owners ?? null},
-					positive        = ${spy.positive ?? null},
-					negative        = ${spy.negative ?? null},
-					avg_playtime    = ${spy.average_forever ?? null},
-					median_playtime = ${spy.median_forever ?? null},
-					ccu             = ${spy.ccu ?? null},
-					updated_at      = now()
-				WHERE appid = ${appid}
-			`;
-			if (spy.tags && Object.keys(spy.tags).length > 0) {
-				await raw`DELETE FROM game_tags WHERE appid = ${appid}`;
-				const rows = Object.entries(spy.tags).map(([tag, votes]) => ({
-					appid,
-					tag,
-					votes,
-				}));
-				await raw`INSERT INTO game_tags ${raw(rows, 'appid', 'tag', 'votes')}`;
-			}
-		}
+		await refreshSteamSpyOne(raw, appid);
 	} catch {
 		/* SteamSpy is best-effort */
 	}
@@ -200,6 +178,45 @@ export async function enrichOne(
 		/* best-effort */
 	}
 
+	return 'ok';
+}
+
+/**
+ * Re-fetch the SteamSpy fields for one appid. Used by both initial
+ * enrichment and the periodic refresher cron. Updates owners_estimate,
+ * positive/negative, avg/median playtime, ccu, replaces game_tags rows,
+ * and bumps steamspy_refreshed_at.
+ */
+export async function refreshSteamSpyOne(
+	raw: postgres.Sql,
+	appid: number,
+): Promise<'ok' | 'no_data'> {
+	const spy = await fetchSteamSpy(appid);
+	if (!spy) {
+		await raw`UPDATE games SET steamspy_refreshed_at = now() WHERE appid = ${appid}`;
+		return 'no_data';
+	}
+	await raw`
+		UPDATE games SET
+			owners_estimate       = ${spy.owners ?? null},
+			positive              = ${spy.positive ?? null},
+			negative              = ${spy.negative ?? null},
+			avg_playtime          = ${spy.average_forever ?? null},
+			median_playtime       = ${spy.median_forever ?? null},
+			ccu                   = ${spy.ccu ?? null},
+			steamspy_refreshed_at = now(),
+			updated_at            = now()
+		WHERE appid = ${appid}
+	`;
+	if (spy.tags && Object.keys(spy.tags).length > 0) {
+		await raw`DELETE FROM game_tags WHERE appid = ${appid}`;
+		const rows = Object.entries(spy.tags).map(([tag, votes]) => ({
+			appid,
+			tag,
+			votes,
+		}));
+		await raw`INSERT INTO game_tags ${raw(rows, 'appid', 'tag', 'votes')}`;
+	}
 	return 'ok';
 }
 

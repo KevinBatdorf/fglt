@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
+import { getCurrentPlayers } from '../lib/steam-live';
 
 /**
  * GET /curate — pre-baked dashboard for the home page.
@@ -165,14 +166,35 @@ export function curateRoutes(raw: postgres.Sql) {
 			LIMIT ${limit}
 		`;
 
-		// Trending — high peak CCU among games you own
-		const trending = await raw`
+		// Trending — top by stored CCU as a candidate pool, then re-rank by
+		// LIVE current-player count from Steam's ISteamUserStats endpoint.
+		// The stored ccu is just used to pre-filter (so we don't fetch live
+		// counts for every game in the library).
+		// Trending — pull a generous candidate pool by stored CCU, fetch live
+		// player counts for all, return them all sorted by live. The UI can
+		// crop for preview rows but the full list is available on the dedicated
+		// trending page.
+		const trendingCandidates = await raw`
 			SELECT ${cardSelect()}
 			FROM games g ${raw.unsafe(platformsJoin)}
 			WHERE g.ccu IS NOT NULL AND g.ccu > 0 AND ${isGame}
 			ORDER BY g.ccu DESC
-			LIMIT ${limit}
+			LIMIT 120
 		`;
+		const liveCounts = await getCurrentPlayers(
+			trendingCandidates.map((g) => g.appid as number),
+		).catch(() => new Map<number, number>());
+		const trending = trendingCandidates
+			.map((g) => ({
+				...g,
+				live_players: liveCounts.get(g.appid as number) ?? null,
+			}))
+			.sort((a, b) => {
+				const la = (a.live_players as number | null) ?? -1;
+				const lb = (b.live_players as number | null) ?? -1;
+				if (la !== lb) return lb - la;
+				return (b.ccu as number) - (a.ccu as number);
+			});
 
 		const byVibe: { label: string; query: string; emoji: string }[] = [
 			{ label: 'Cozy & contemplative', query: 'cozy puzzle game with story', emoji: '🍵' },

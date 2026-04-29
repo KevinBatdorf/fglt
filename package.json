@@ -10,6 +10,7 @@
 		"sync:gog": "bun run scripts/sync-gog.ts",
 		"auth:gog": "bun run scripts/auth-gog.ts",
 		"sync:youtube": "bun run scripts/sync-youtube.ts",
+		"refresh:steamspy": "bun run scripts/refresh-steamspy.ts",
 		"desktop": "cd apps/desktop && bun run dev:hmr",
 		"enrich": "bun run scripts/enrich.ts",
 		"embed": "bun run scripts/embed.ts",

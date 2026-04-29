@@ -14,6 +14,7 @@ import { similarRoutes } from './routes/similar';
 import { statsRoutes } from './routes/stats';
 import { syncRoutes } from './routes/sync';
 import { tagsRoutes } from './routes/tags';
+import { vibesRoutes } from './routes/vibes';
 
 const app = new Hono();
 
@@ -40,6 +41,7 @@ app.route('/', curateRoutes(raw));
 app.route('/', listsRoutes(raw));
 app.route('/', activityRoutes(raw));
 app.route('/', tagsRoutes(raw));
+app.route('/', vibesRoutes(raw));
 mcpRoutes(app);
 
 app.get('/', (c) =>

@@ -120,28 +120,21 @@ export function GameDetail({
 				)}
 				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/30 to-transparent" />
 
-				{/* Top-left: Back / Home — z-10 above gradient */}
-				<div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
-					<button
-						type="button"
-						onClick={onBack}
-						disabled={!canBack}
-						className="px-3 py-1.5 rounded-md bg-zinc-950/80 hover:bg-zinc-900 backdrop-blur-sm border border-zinc-700/60 text-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
-						title={canBack ? "Back (Alt+Left, Backspace)" : "Nothing to go back to"}
-					>
-						<span aria-hidden>←</span>
-						<span>Back</span>
-					</button>
-					<button
-						type="button"
-						onClick={onHome}
-						className="px-3 py-1.5 rounded-md bg-zinc-950/80 hover:bg-zinc-900 backdrop-blur-sm border border-zinc-700/60 text-sm flex items-center gap-1.5 shadow-lg"
-						title="Home (Esc)"
-					>
-						<span aria-hidden>🏠</span>
-						<span>Home</span>
-					</button>
-				</div>
+				{/* Top-left: Back — only renders when there's somewhere to go.
+				    Home is redundant with the sidebar, so it's not duplicated here. */}
+				{canBack && (
+					<div className="absolute top-3 left-3 z-10">
+						<button
+							type="button"
+							onClick={onBack}
+							className="px-3 py-1.5 rounded-md bg-zinc-950/80 hover:bg-zinc-900 backdrop-blur-sm border border-zinc-700/60 text-sm flex items-center gap-1.5 shadow-lg"
+							title="Back (Alt+Left, Backspace)"
+						>
+							<span aria-hidden>←</span>
+							<span>Back</span>
+						</button>
+					</div>
+				)}
 
 				{/* Title overlay at bottom of hero */}
 				{game && (
@@ -227,28 +220,56 @@ export function GameDetail({
 							</div>
 						</div>
 
-						{game.videos.length > 0 && (
-							<section>
-								<h3 className="text-base font-semibold mb-3">Videos</h3>
-								<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-									{game.videos.slice(0, 4).map((v) => (
-										<VideoEmbed key={v.video_id} video={v} />
-									))}
-								</div>
-								{game.videos.length > 4 && (
-									<details className="mt-3">
-										<summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
-											Show {game.videos.length - 4} more
-										</summary>
-										<div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
-											{game.videos.slice(4).map((v) => (
-												<VideoEmbed key={v.video_id} video={v} />
-											))}
+						<section>
+							<h3 className="text-base font-semibold mb-3">Videos</h3>
+							{game.videos.length > 0 ? (
+								<>
+									<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+										{game.videos.slice(0, 4).map((v) => (
+											<VideoEmbed key={v.video_id} video={v} />
+										))}
+									</div>
+									{game.videos.length > 4 && (
+										<details className="mt-3">
+											<summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
+												Show {game.videos.length - 4} more
+											</summary>
+											<div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+												{game.videos.slice(4).map((v) => (
+													<VideoEmbed key={v.video_id} video={v} />
+												))}
+											</div>
+										</details>
+									)}
+								</>
+							) : (
+								<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center gap-4">
+									<div className="flex-1">
+										<div className="text-sm text-zinc-200">
+											No videos discovered yet
 										</div>
-									</details>
-								)}
-							</section>
-						)}
+										<div className="text-xs text-zinc-500 mt-0.5">
+											{refreshing
+												? "Fetching from YouTube…"
+												: "The discovery cron processes ~100 games/day (newest first). Skip the queue and try now."}
+										</div>
+										{refreshResult && (
+											<div className="text-[11px] text-zinc-500 font-mono mt-1.5">
+												{refreshResult}
+											</div>
+										)}
+									</div>
+									<button
+										type="button"
+										onClick={handleRefresh}
+										disabled={refreshing}
+										className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50 whitespace-nowrap"
+									>
+										{refreshing ? "Fetching…" : "Fetch now"}
+									</button>
+								</div>
+							)}
+						</section>
 
 						<section>
 							<h3 className="text-base font-semibold mb-3">

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { GameImage } from "./GameImage";
+import { Select } from "./Select";
 import { type LibraryGame, api } from "./lib/api";
+import { getRecentlyAddedMonths } from "./lib/prefs";
 import type { InstalledIndex, Platform } from "../shared/types";
 
 type Preset = "all" | "unplayed" | "recently_played" | "recently_added";
@@ -26,6 +28,28 @@ const DEFAULT_SORT: Record<Preset, SortKey> = {
 	recently_added: "recently_added",
 };
 
+// Sort options each preset actually supports. "Most played" / "Recently
+// played" are no-ops when every row has playtime=0, so they don't show up
+// in the Unplayed view.
+// "recently_added" sort only makes sense on its own preset (where the data
+// is already filtered to post-setup additions). On the other views every row
+// has its own arbitrary created_at and the sort isn't useful.
+const SORT_OPTIONS: Record<Preset, SortKey[]> = {
+	all: ["name", "playtime", "recently_played", "year", "rating"],
+	unplayed: ["rating", "name", "year"],
+	recently_played: ["recently_played", "playtime", "rating", "name", "year"],
+	recently_added: ["recently_added", "name", "year", "rating"],
+};
+
+const SORT_LABELS: Record<SortKey, string> = {
+	name: "Sort: A–Z",
+	playtime: "Sort: Most played",
+	recently_played: "Sort: Recently played",
+	recently_added: "Sort: Recently added",
+	year: "Sort: Newest first",
+	rating: "Sort: Highest rated",
+};
+
 const PRESET_TITLE: Record<Preset, string | null> = {
 	all: null,
 	unplayed: "Unplayed",
@@ -42,17 +66,14 @@ export function AllGames({
 	const [allGames, setAllGames] = useState<LibraryGame[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [sort, setSort] = useState<SortKey>(DEFAULT_SORT[preset]);
-	const [genre, setGenre] = useState<string>("");
 	const [tag, setTag] = useState<string>("");
 	const [filter, setFilter] = useState("");
 	const [searchOrder, setSearchOrder] = useState<number[] | null>(null);
 	const [searching, setSearching] = useState(false);
 	const [allTags, setAllTags] = useState<{ tag: string; games: number }[]>([]);
 
-	// Reset sort when preset changes (different default)
 	useEffect(() => {
 		setSort(DEFAULT_SORT[preset]);
-		setGenre("");
 		setTag("");
 		setFilter("");
 	}, [preset]);
@@ -69,6 +90,10 @@ export function AllGames({
 		};
 		if (preset === "unplayed") params.unplayed = "1";
 		if (preset === "recently_played") params.min_playtime = 1;
+		if (preset === "recently_added") {
+			params.recently_added = "1";
+			params.within_months = getRecentlyAddedMonths();
+		}
 		if (tag) params.tag = tag;
 		api
 			.library(params, ctrl.signal)
@@ -102,6 +127,10 @@ export function AllGames({
 			};
 			if (preset === "unplayed") params.unplayed = "1";
 			if (preset === "recently_played") params.min_playtime = 1;
+			if (preset === "recently_added") {
+			params.recently_added = "1";
+			params.within_months = getRecentlyAddedMonths();
+		}
 			if (tag) params.tag = tag;
 			api
 				.library(params, ctrl.signal)
@@ -117,23 +146,11 @@ export function AllGames({
 		};
 	}, [filter, platformFilter, preset, tag]);
 
-	const allGenres = useMemo(() => {
-		if (!allGames) return [] as string[];
-		const set = new Set<string>();
-		for (const g of allGames) {
-			if (g.genres) for (const x of g.genres) set.add(x);
-		}
-		return [...set].sort();
-	}, [allGames]);
-
 	const visible = useMemo(() => {
 		if (!allGames) return [] as LibraryGame[];
 
 		const byId = new Map<number, LibraryGame>();
-		for (const g of allGames) {
-			if (genre && !(g.genres ?? []).includes(genre)) continue;
-			byId.set(g.appid, g);
-		}
+		for (const g of allGames) byId.set(g.appid, g);
 
 		if (searchOrder !== null) {
 			const out: LibraryGame[] = [];
@@ -157,10 +174,15 @@ export function AllGames({
 					if (ta !== tb) return tb - ta;
 					return (b.playtime_2wk ?? 0) - (a.playtime_2wk ?? 0);
 				}
-				case "recently_added":
-					// Steam appids monotonically increase, so newer purchases tend to
-					// have higher ids — proxy until we expose created_at on /library.
+				case "recently_added": {
+					// `created_at` is when our DB first saw this row — usually within
+					// 24h of the user buying it (next syncer cron). Falls back to
+					// appid desc if missing for some reason.
+					const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+					const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+					if (tb !== ta) return tb - ta;
 					return b.appid - a.appid;
+				}
 				case "year": {
 					const ya = Number(a.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
 					const yb = Number(b.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
@@ -174,7 +196,7 @@ export function AllGames({
 			}
 		});
 		return out;
-	}, [allGames, sort, genre, searchOrder]);
+	}, [allGames, sort, searchOrder]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (!allGames)
@@ -204,47 +226,29 @@ export function AllGames({
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
 					placeholder="Search this view…"
-					title="Hybrid keyword + semantic vector search, scoped to the current view (platform / preset / tag / genre)."
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
+					title="Hybrid keyword + semantic vector search, scoped to the current view."
+					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-xs placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
 				/>
-				<select
-					value={genre}
-					onChange={(e) => setGenre(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
-				>
-					<option value="">All genres</option>
-					{allGenres.map((g) => (
-						<option key={g} value={g}>
-							{g}
-						</option>
-					))}
-				</select>
-				<select
-					value={tag}
-					onChange={(e) => setTag(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
-				>
+				<Select value={tag} onChange={setTag}>
 					<option value="">All tags</option>
 					{allTags.map((t) => (
 						<option key={t.tag} value={t.tag}>
 							{t.tag} ({t.games})
 						</option>
 					))}
-				</select>
-				<select
+				</Select>
+				<Select
 					value={sort}
-					onChange={(e) => setSort(e.target.value as SortKey)}
+					onChange={(v) => setSort(v as SortKey)}
 					disabled={sortDisabled}
-					title={sortDisabled ? "Search results are ranked by relevance" : ""}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600 disabled:opacity-50"
+					title={sortDisabled ? "Search results are ranked by relevance" : undefined}
 				>
-					<option value="name">Sort: A–Z</option>
-					<option value="playtime">Sort: Most played</option>
-					<option value="recently_played">Sort: Recently played</option>
-					<option value="recently_added">Sort: Recently added</option>
-					<option value="year">Sort: Newest first</option>
-					<option value="rating">Sort: Highest rated</option>
-				</select>
+					{SORT_OPTIONS[preset].map((k) => (
+						<option key={k} value={k}>
+							{SORT_LABELS[k]}
+						</option>
+					))}
+				</Select>
 				{!presetTitle && (
 					<span className="ml-auto text-xs text-zinc-500 tabular-nums">
 						{searching ? "searching…" : null}

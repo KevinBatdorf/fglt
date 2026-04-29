@@ -26,6 +26,7 @@ services:
       STEAM_ID: '${STEAM_ID:-}'
       OLLAMA_URL: '${OLLAMA_URL:-http://host.docker.internal:11434}'
       OLLAMA_EMBED_MODEL: '${OLLAMA_EMBED_MODEL:-nomic-embed-text}'
+      OLLAMA_CHAT_MODEL: '${OLLAMA_CHAT_MODEL:-llama3.2}'
       YOUTUBE_API_KEY: '${YOUTUBE_API_KEY:-}'
     command: bun run /app/src/index.ts
     ports:
@@ -65,6 +66,22 @@ services:
     command: sh -c 'bun run /app/scripts/enrich.ts || true; bun run /app/scripts/embed.ts || true; printf "%s\n" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/enrich.ts" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/embed.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  steamspy-refresher:
+    build: .
+    container_name: steam-steamspy-refresher
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@steam-postgres:5432/steam'
+      STEAMSPY_BATCH: '${STEAMSPY_BATCH:-500}'
+      STEAMSPY_DELAY_MS: '${STEAMSPY_DELAY_MS:-1100}'
+      STEAMSPY_REFRESH_DAYS: '${STEAMSPY_REFRESH_DAYS:-7}'
+      STEAMSPY_CRON: '${STEAMSPY_CRON:-0 5 * * *}'
+    command: sh -c 'bun run /app/scripts/refresh-steamspy.ts || true; echo "$$STEAMSPY_CRON /usr/local/bin/bun run /app/scripts/refresh-steamspy.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
     restart: unless-stopped
     depends_on:
       - postgres

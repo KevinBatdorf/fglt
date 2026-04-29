@@ -162,6 +162,13 @@ export interface ActivityResponse {
 	meta: { key: string; value: string; updated: string }[];
 }
 
+export interface VibesResponse {
+	vibes: VibeChip[];
+	generated_at: string;
+	source: "static" | "llm";
+	stale?: boolean;
+}
+
 export interface CurateResponse {
 	continue_playing: LibraryGame[];
 	because_recently: { seed: CurateSeed; recs: LibraryGame[] } | null;
@@ -231,6 +238,8 @@ export const api = {
 			"/tags",
 			signal,
 		),
+	vibes: (signal?: AbortSignal) => get<VibesResponse>("/vibes", signal),
+	regenerateVibes: () => jsonCall<VibesResponse>("/vibes/regenerate", "POST"),
 	activity: (signal?: AbortSignal) =>
 		get<ActivityResponse>("/activity", signal),
 	syncOwned: () => jsonCall<{ ok: boolean; total: number; removed?: number }>("/sync", "POST"),

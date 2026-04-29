@@ -4,6 +4,7 @@ import { Discover } from "./Discover";
 import { GameDetail } from "./GameDetail";
 import { GameImage } from "./GameImage";
 import { Home } from "./Home";
+import { Select } from "./Select";
 import { Settings } from "./Settings";
 import {
 	type LibraryGame,
@@ -223,9 +224,35 @@ function App() {
 }
 
 function VibeRow({ onPick }: { onPick: (query: string) => void }) {
+	const [vibes, setVibes] = useState<{ label: string; query: string; emoji: string }[]>(VIBES);
+	const [refreshing, setRefreshing] = useState(false);
+
+	useEffect(() => {
+		api
+			.vibes()
+			.then((d) => {
+				if (d.vibes && d.vibes.length > 0) setVibes(d.vibes);
+			})
+			.catch(() => {
+				/* keep static defaults */
+			});
+	}, []);
+
+	async function handleRefresh() {
+		setRefreshing(true);
+		try {
+			const d = await api.regenerateVibes();
+			if (d.vibes && d.vibes.length > 0) setVibes(d.vibes);
+		} catch (e) {
+			console.error("vibes regenerate failed:", e);
+		} finally {
+			setRefreshing(false);
+		}
+	}
+
 	return (
-		<div className="px-6 pb-3 flex flex-wrap gap-1.5">
-			{VIBES.map((v) => (
+		<div className="px-6 pb-3 flex flex-wrap items-center gap-1.5">
+			{vibes.map((v) => (
 				<button
 					type="button"
 					key={v.label}
@@ -236,6 +263,15 @@ function VibeRow({ onPick }: { onPick: (query: string) => void }) {
 					{v.label}
 				</button>
 			))}
+			<button
+				type="button"
+				onClick={handleRefresh}
+				disabled={refreshing}
+				title={refreshing ? "Generating new vibes…" : "Regenerate via Ollama (uses your library's tags)"}
+				className="text-[11px] px-2.5 py-1 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
+			>
+				{refreshing ? "↻ …" : "↻ Refresh"}
+			</button>
 		</div>
 	);
 }
@@ -330,7 +366,6 @@ function SearchResults({
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [sort, setSort] = useState<SearchSort>("match");
-	const [genre, setGenre] = useState<string>("");
 	const [tag, setTag] = useState<string>("");
 	const [allTags, setAllTags] = useState<{ tag: string; games: number }[]>([]);
 
@@ -357,17 +392,8 @@ function SearchResults({
 		return () => ctrl.abort();
 	}, [query, tag]);
 
-	const allGenres = useMemo(() => {
-		const set = new Set<string>();
-		for (const g of results) {
-			if (g.genres) for (const x of g.genres) set.add(x);
-		}
-		return [...set].sort();
-	}, [results]);
-
 	const visible = useMemo(() => {
-		let out = results;
-		if (genre) out = out.filter((g) => (g.genres ?? []).includes(genre));
+		const out = results;
 		if (sort === "match") return out;
 		const sorted = [...out];
 		sorted.sort((a, b) => {
@@ -393,7 +419,7 @@ function SearchResults({
 			}
 		});
 		return sorted;
-	}, [results, sort, genre]);
+	}, [results, sort]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (loading && results.length === 0)
@@ -415,42 +441,22 @@ function SearchResults({
 				</p>
 			</header>
 			<div className="mb-4 flex flex-wrap items-center gap-2">
-				<select
-					value={genre}
-					onChange={(e) => setGenre(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
-				>
-					<option value="">All genres</option>
-					{allGenres.map((g) => (
-						<option key={g} value={g}>
-							{g}
-						</option>
-					))}
-				</select>
-				<select
-					value={tag}
-					onChange={(e) => setTag(e.target.value)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
-				>
+				<Select value={tag} onChange={setTag}>
 					<option value="">All tags</option>
 					{allTags.map((t) => (
 						<option key={t.tag} value={t.tag}>
 							{t.tag} ({t.games})
 						</option>
 					))}
-				</select>
-				<select
-					value={sort}
-					onChange={(e) => setSort(e.target.value as SearchSort)}
-					className="bg-zinc-900 border border-zinc-800 rounded-md pl-2 pr-7 py-1.5 text-sm focus:outline-none focus:border-zinc-600"
-				>
+				</Select>
+				<Select value={sort} onChange={(v) => setSort(v as SearchSort)}>
 					<option value="match">Sort: Match</option>
 					<option value="rating">Sort: Highest rated</option>
 					<option value="popularity">Sort: Most popular</option>
 					<option value="playtime">Sort: Most played</option>
 					<option value="year">Sort: Newest first</option>
 					<option value="name">Sort: A–Z</option>
-				</select>
+				</Select>
 			</div>
 			<GameGrid games={visible} installed={installed} onSelect={onSelect} />
 		</div>

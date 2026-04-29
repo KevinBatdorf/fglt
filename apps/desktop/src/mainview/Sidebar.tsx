@@ -135,14 +135,12 @@ export function Sidebar({
 				<Section
 					title="Lists"
 					action={
-						<button
-							type="button"
+						<SectionAction
 							onClick={() => setCreatingList((v) => !v)}
-							className="-mr-2 text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
 							title={creatingList ? "Cancel" : "Create new list"}
 						>
 							{creatingList ? "Cancel" : "+ New"}
-						</button>
+						</SectionAction>
 					}
 				>
 					{creatingList && (
@@ -190,13 +188,9 @@ export function Sidebar({
 					<Section
 						title="Recent searches"
 						action={
-							<button
-								type="button"
-								onClick={onClearRecent}
-								className="text-[10px] text-zinc-600 hover:text-zinc-400"
-							>
-								clear
-							</button>
+							<SectionAction onClick={onClearRecent} title="Clear recent searches">
+								Clear
+							</SectionAction>
 						}
 					>
 						{recentSearches.map((q) => {
@@ -233,6 +227,27 @@ export function Sidebar({
 				</button>
 			</div>
 		</aside>
+	);
+}
+
+function SectionAction({
+	onClick,
+	title,
+	children,
+}: {
+	onClick: () => void;
+	title?: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			title={title}
+			className="-mr-2 text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
+		>
+			{children}
+		</button>
 	);
 }
 
