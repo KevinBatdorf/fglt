@@ -729,7 +729,7 @@ function SearchResults({
 					{title ? (
 						<>
 							<span className="text-zinc-400 font-normal text-base mr-2">
-								Curated:
+								Saved:
 							</span>
 							{title}
 							<span className="ml-2 text-sm text-zinc-500 font-normal">

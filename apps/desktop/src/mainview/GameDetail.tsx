@@ -41,6 +41,56 @@ type RefreshSource =
 	| 'opencritic'
 	| 'youtube';
 
+/**
+ * Strip HTML tags + collapse whitespace. Upstream APIs (notably YouTube)
+ * embed `<a>` and other markup in their error strings — we render results
+ * as plain text in the placeholder so that markup would otherwise show up
+ * literally as `<a href="...">quota</a>`.
+ */
+function plainText(s: string): string {
+	return s
+		.replace(/<[^>]+>/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+/**
+ * Replace upstream's verbose error strings with concise human messages.
+ * Falls back to the cleaned-up original if no friendly mapping exists.
+ */
+function friendlyDetail(source: string, status: string, detail: unknown): string {
+	const raw = plainText(
+		typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '',
+	);
+	if (source === 'youtube') {
+		if (status === 'rate_limited' || /quota/i.test(raw)) {
+			return 'Daily YouTube quota reached. Resets at 00:00 PT (~07:00 UTC).';
+		}
+		if (status === 'disabled') return 'YouTube key not configured.';
+	}
+	if (source === 'opencritic') {
+		if (status === 'rate_limited') {
+			return 'OpenCritic daily budget reached. Try again tomorrow.';
+		}
+		if (status === 'disabled') return 'OpenCritic key not configured.';
+		if (status === 'not_listed') return 'Not listed on OpenCritic.';
+	}
+	return raw;
+}
+
+function formatSourceResult(
+	source: string,
+	v: { status: string; detail?: unknown },
+): string {
+	if (v.status === 'ok' || v.status === 'not_listed') {
+		return `${source}: ${v.status}`;
+	}
+	const friendly = friendlyDetail(source, v.status, v.detail);
+	return friendly
+		? `${source}: ${v.status} — ${friendly}`
+		: `${source}: ${v.status}`;
+}
+
 function useRefresh(
 	appid: number,
 	source: RefreshSource,
@@ -65,24 +115,9 @@ function useRefresh(
 			// short default timeout. Steam appdetails refresh can take
 			// 5-15s due to the upstream rate-limit sleeps in enrichOne.
 			const r = await api.refreshGame(appid, source);
-			// One-line summary; surface error/rate-limit detail since the
-			// status alone ("error") isn't actionable.
 			setResult(
 				Object.entries(r.sources)
-					.map(([k, v]) => {
-						if (v.status === 'ok' || v.status === 'not_listed') {
-							return `${k}: ${v.status}`;
-						}
-						const detail =
-							typeof v.detail === 'string'
-								? v.detail
-								: v.detail
-									? JSON.stringify(v.detail)
-									: '';
-						return detail
-							? `${k}: ${v.status} — ${detail}`
-							: `${k}: ${v.status}`;
-					})
+					.map(([k, v]) => formatSourceResult(k, v))
 					.join(' · ') || 'done',
 			);
 			await onUpdated();
@@ -407,6 +442,12 @@ export function GameDetail({
 							</div>
 
 							<div className="space-y-6">
+								<CriticScoresSection
+									game={game}
+									positivePct={positivePct}
+									showRefreshIcon={showRefreshIcon}
+									refreshOC={refreshOC}
+								/>
 								{game.short_desc && (
 									<section>
 										<p className="text-sm text-zinc-200 leading-relaxed">
@@ -417,12 +458,6 @@ export function GameDetail({
 								{topTags.length > 0 && (
 									<TagsSection tags={topTags} onSearch={onSearch} />
 								)}
-								<CriticScoresSection
-									game={game}
-									positivePct={positivePct}
-									showRefreshIcon={showRefreshIcon}
-									refreshOC={refreshOC}
-								/>
 								<StatsRow game={game} />
 								<GameInfoSection game={game} />
 							</div>
@@ -1174,7 +1209,9 @@ function ScreenshotsGrid({ screenshots }: { screenshots: Screenshot[] }) {
 			)}
 			{lightboxIdx !== null && (
 				<Lightbox
-					images={(expanded ? screenshots : visible).map((s) => s.path_full)}
+					// Always pass the full set so arrow navigation reaches the
+					// hidden screenshots even before the user clicks "Show more".
+					images={screenshots.map((s) => s.path_full)}
 					index={lightboxIdx}
 					onChange={setLightboxIdx}
 					onClose={() => setLightboxIdx(null)}
@@ -1219,18 +1256,20 @@ function Lightbox({
 		// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled by document-level Escape listener
 		<div
 			onClick={onClose}
-			className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center"
+			className="group fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm grid place-items-center"
 		>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: image inside modal */}
-			{/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click handled */}
+			{/* Image is dead-centered via grid place-items-center. UI
+			    elements are pinned to the backdrop edges (not the image)
+			    so they stay in the same screen positions regardless of
+			    image dimensions. Group-hover on the outer backdrop reveals
+			    them when the user moves the cursor anywhere over the
+			    lightbox. */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop click handled by parent */}
 			<img
 				src={images[index]}
 				alt=""
-				onClick={(e) => {
-					e.stopPropagation();
-					onClose();
-				}}
-				className="max-w-[95vw] max-h-[95vh] object-contain cursor-pointer select-none"
+				onClick={(e) => e.stopPropagation()}
+				className="block max-w-[90vw] max-h-[90vh] w-auto h-auto select-none"
 			/>
 			{images.length > 1 && (
 				<>
@@ -1241,7 +1280,7 @@ function Lightbox({
 							prev();
 						}}
 						aria-label="Previous"
-						className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-3xl text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition"
+						className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-3xl leading-none pb-0.5 text-zinc-200 hover:text-white bg-zinc-950/70 hover:bg-zinc-900 border border-zinc-700 rounded-full transition shadow-lg opacity-0 group-hover:opacity-100"
 					>
 						‹
 					</button>
@@ -1252,11 +1291,11 @@ function Lightbox({
 							next();
 						}}
 						aria-label="Next"
-						className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-3xl text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition"
+						className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-3xl leading-none pb-0.5 text-zinc-200 hover:text-white bg-zinc-950/70 hover:bg-zinc-900 border border-zinc-700 rounded-full transition shadow-lg opacity-0 group-hover:opacity-100"
 					>
 						›
 					</button>
-					<div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/60 tabular-nums bg-black/30 px-2 py-1 rounded">
+					<div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/80 tabular-nums bg-black/60 border border-zinc-700 px-2 py-0.5 rounded transition-opacity opacity-0 group-hover:opacity-100">
 						{index + 1} / {images.length}
 					</div>
 				</>
@@ -1268,7 +1307,7 @@ function Lightbox({
 					onClose();
 				}}
 				aria-label="Close"
-				className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-2xl text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition"
+				className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-2xl leading-none pb-0.5 text-zinc-200 hover:text-white bg-zinc-950/70 hover:bg-zinc-900 border border-zinc-700 rounded-full transition shadow-lg opacity-0 group-hover:opacity-100"
 			>
 				×
 			</button>

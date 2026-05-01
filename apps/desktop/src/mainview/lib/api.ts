@@ -337,6 +337,11 @@ export const api = {
 			name,
 			from_search: { q, tag },
 		}),
+	createListFromAppids: (name: string, appids: number[]) =>
+		jsonCall<ListSummary & { games_added: number }>('/lists', 'POST', {
+			name,
+			appids,
+		}),
 	deleteList: (listRef: string | number) =>
 		jsonCall<{ ok: boolean }>(`/lists/${listRef}`, 'DELETE'),
 	savedSearches: (signal?: AbortSignal) =>

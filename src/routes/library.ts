@@ -77,17 +77,29 @@ export function libraryRoutes(raw: postgres.Sql) {
 			i === 0 ? cond : raw`${acc} AND ${cond}`,
 		);
 
-		// Hybrid score (0..1-ish): 0.6 * vector-similarity + 0.4 * ts_rank.
-		// FTS-only mode uses ts_rank by itself. Cast to float so postgres.js
-		// returns a JS number (the literal 0.6 makes Postgres choose `numeric`,
-		// which would arrive as a string).
+		// Hybrid score (0..1-ish): 0.6 * vector-similarity + 0.4 * ts_rank,
+		// PLUS a title-match bonus so short queries that obviously target a
+		// game by name surface at the top. Without the bonus, "cyberpunk" vs
+		// "Cyberpunk 2077" caps around 0.58 because a 1-word query embedding
+		// vs a multi-paragraph game-embedding has ~0.5 cosine similarity.
+		// Cast to float so postgres.js returns a JS number (the literal 0.6
+		// would otherwise make Postgres pick `numeric`, arriving as a string).
+		const titleBonus = q
+			? raw`(CASE WHEN g.name ILIKE ${`%${q}%`} THEN 0.30 ELSE 0 END)`
+			: raw`0`;
 		const scoreExpr =
 			q.length === 0
 				? raw`NULL::float`
 				: vec
-					? raw`((0.6 * (1 - (g.embedding <=> ${vec}::vector)) +
-					    0.4 * COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0))::float)`
-					: raw`(COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0)::float)`;
+					? raw`(LEAST(1.0,
+					    0.6 * (1 - (g.embedding <=> ${vec}::vector)) +
+					    0.4 * COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0) +
+					    ${titleBonus}
+					)::float)`
+					: raw`(LEAST(1.0,
+					    COALESCE(ts_rank(g.search, websearch_to_tsquery('english', ${q})), 0) +
+					    ${titleBonus}
+					)::float)`;
 
 		const orderBy =
 			q.length === 0

@@ -86,7 +86,15 @@ export function Sidebar({
 				notifySavedSearchesChanged();
 				onNavigate({ kind: 'saved_search', slug: created.slug });
 			} else {
-				const created = await api.createListFromSearch(name, savePrompt.query);
+				// Run the same hybrid search the SearchResults view uses,
+				// then hand the appids to the server. Server-side FTS-only
+				// search would miss vector-only matches for vibey queries.
+				const lib = await api.library({
+					q: savePrompt.query,
+					limit: 5000,
+				});
+				const appids = lib.results.map((g) => g.appid);
+				const created = await api.createListFromAppids(name, appids);
 				notifyListsChanged();
 				onNavigate({ kind: 'list', slug: created.slug });
 			}
@@ -240,6 +248,35 @@ export function Sidebar({
 					)}
 				</Section>
 
+				{savedSearches && savedSearches.length > 0 && (
+					<Section title="Saved searches">
+						{savedSearches.map((s) => {
+							const active =
+								view.kind === 'saved_search' && view.slug === s.slug;
+							return (
+								<NavItem
+									key={s.id}
+									active={active}
+									onClick={() =>
+										onNavigate({ kind: 'saved_search', slug: s.slug })
+									}
+									onContextMenu={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										setSavedMenu({
+											x: e.clientX,
+											y: e.clientY,
+											entry: s,
+										});
+									}}
+									icon={s.emoji ?? '🔖'}
+									label={s.name}
+								/>
+							);
+						})}
+					</Section>
+				)}
+
 				{vis.platforms && (
 					<Section title="Platforms">
 						{(['steam', 'epic', 'gog'] as Platform[]).map((p) => (
@@ -322,36 +359,6 @@ export function Sidebar({
 					</Section>
 				)}
 
-				{savedSearches && savedSearches.length > 0 && (
-					<Section title="Curated">
-						{savedSearches.map((s) => {
-							const active =
-								view.kind === 'saved_search' && view.slug === s.slug;
-							return (
-								<NavItem
-									key={s.id}
-									active={active}
-									onClick={() =>
-										onNavigate({ kind: 'saved_search', slug: s.slug })
-									}
-									onContextMenu={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										setSavedMenu({
-											x: e.clientX,
-											y: e.clientY,
-											entry: s,
-										});
-									}}
-									icon={s.emoji ?? '🔖'}
-									label={s.name}
-									count={s.count ?? 0}
-								/>
-							);
-						})}
-					</Section>
-				)}
-
 				{vis.recent_searches && recentSearches.length > 0 && (
 					<Section
 						title="Recent searches"
@@ -406,7 +413,7 @@ export function Sidebar({
 												}}
 												placeholder={
 													savePrompt.mode === 'curated'
-														? 'Curated name'
+														? 'Saved search name'
 														: 'List name'
 												}
 												className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-600"
@@ -475,7 +482,7 @@ export function Sidebar({
 					onClose={() => setRecentMenu(null)}
 					items={[
 						{
-							label: 'Save as Curated',
+							label: 'Save search',
 							onClick: () =>
 								setSavePrompt({
 									query: recentMenu.query,

@@ -34,6 +34,12 @@ export function listsRoutes(raw: postgres.Sql) {
 			slug?: string;
 			/** If set, populate the new list with all games matching the search. */
 			from_search?: { q: string; tag?: string };
+			/**
+			 * If set, populate the list with these exact appids. Used by the
+			 * "Create list from results" flow where the client already ran
+			 * the (possibly hybrid-vector) search and wants those exact games.
+			 */
+			appids?: number[];
 		};
 		if (!body.name || body.name.trim().length === 0) {
 			return c.json({ error: 'name required' }, 400);
@@ -46,8 +52,33 @@ export function listsRoutes(raw: postgres.Sql) {
 				RETURNING id, slug, name, emoji, is_system, created_at
 			`;
 
-			// Optional: bulk-fill from a live search. Same FTS-only filter as the
-			// saved-search count — vector ordering doesn't change membership.
+			// Optional: bulk-fill from a client-supplied appid list. Used by
+			// the right-click "Create list from results" flow where the
+			// client already ran the hybrid search.
+			if (body.appids && body.appids.length > 0) {
+				const valid = body.appids.filter(
+					(n) => Number.isFinite(n) && n > 0,
+				);
+				if (valid.length > 0) {
+					const rows = valid.map((appid) => ({
+						list_id: (list as { id: number }).id,
+						appid,
+					}));
+					await raw`
+						INSERT INTO list_games ${raw(rows, 'list_id', 'appid')}
+						ON CONFLICT (list_id, appid) DO NOTHING
+					`;
+				}
+				return c.json(
+					{ ...(list as object), games_added: valid.length },
+					201,
+				);
+			}
+
+			// Optional: bulk-fill from a server-side FTS search. Useful when
+			// the caller doesn't already have the appid set in hand. Note
+			// this is FTS-only — for vibey queries the client should use
+			// `appids` after running the hybrid search itself.
 			if (body.from_search?.q) {
 				const conds = [
 					raw`g.search @@ websearch_to_tsquery('english', ${body.from_search.q})`,
