@@ -1,23 +1,24 @@
-# SEG — find a game like that.
+# Find a Game Like That
 
-A self-hosted Postgres + pgvector database of your owned game library across
-**Steam, Epic, and GOG**, enriched with Steam Store metadata, SteamSpy tags +
-estimated owners, HowLongToBeat completion times, Steam's own "more like
-this" graph, and per-game YouTube videos (walkthroughs / let's-plays /
-trailers). Hybrid keyword + semantic vector search via Ollama embeddings.
-Bun + Hono API + an MCP server (open locally; OAuth at the proxy layer).
+A self-hosted game library + recommendation engine for your **Steam, Epic,
+and GOG** collection — Postgres + pgvector, hybrid keyword + semantic
+search, enriched with Steam Store metadata, SteamSpy tags / estimated
+owners, HowLongToBeat completion times, OpenCritic + Metacritic scores,
+Steam user reviews, Steam's "more like this" graph, and per-game YouTube
+videos. Bun + Hono API, Electrobun desktop app, and an MCP server (open
+locally; OAuth at the proxy layer).
 
 Steam appid is the canonical key — Epic / GOG titles match into Steam via
 storesearch, so a single appid can be owned across multiple storefronts.
 
-Modeled after the `anna` project layout (drizzle, postgres-js, in-process MCP
-client/server pair).
+Repo: <https://github.com/KevinBatdorf/faglt>
 
 ## Stack
 
 - **Runtime:** Bun
 - **API:** Hono
 - **DB:** Postgres 17 + pgvector + pg_trgm (Drizzle for the schema)
+- **Desktop:** Electrobun + React + Vite + Tailwind
 - **AI provider:** Vercel AI SDK + `@ai-sdk/openai-compatible` — works
   with Ollama (default), OpenAI, Groq, Together, or any OpenAI-compatible
   endpoint. Configured via `AI_BASE_URL` / `AI_API_KEY` / `AI_CHAT_MODEL` /
@@ -26,22 +27,24 @@ client/server pair).
   swap to `text-embedding-3-small` or any other model by changing
   `AI_EMBED_MODEL`. Schema's `vector(768)` column has to match the
   model's output dimension.
-- **External data:** YouTube Data API v3 for per-game videos. OpenCritic /
-  IGDB / PCGamingWiki / ProtonDB are planned and slot into the same
-  `/games/:appid/refresh` endpoint.
-- **MCP:** `@modelcontextprotocol/sdk`, in-process pair, exposed at `POST /mcp`
-  (open locally; OAuth at the `expose-tunnels` reverse proxy)
+- **External data:** Steam appdetails, SteamSpy, HowLongToBeat, OpenCritic
+  (RapidAPI), Steam user reviews (public), YouTube Data API v3. Each
+  source has its own rate-budget logic that leaves headroom for manual
+  refreshes from the desktop.
+- **MCP:** `@modelcontextprotocol/sdk`, in-process pair, exposed at
+  `POST /mcp` (open locally; OAuth at the `expose-tunnels` reverse proxy)
 - **HTTP examples:** Yaak workspace under `yaak/`
 
 ## Containers (docker-compose)
 
-| service           | role                                              | cron default        |
-| ----------------- | ------------------------------------------------- | ------------------- |
-| `postgres`        | pgvector DB, port `${POSTGRES_PORT:-5532}`        | —                   |
-| `api`             | Hono server, port `${PORT:-3110}`                 | —                   |
-| `syncer`          | refreshes owned-games list                        | `0 6 * * *` (06:00) |
-| `enricher`        | enriches + embeds new games                       | `*/15 * * * *`      |
-| `youtube-syncer`  | discovers YouTube videos per game (newest first)  | `30 6 * * *` (06:30)|
+| service               | role                                              | cron default        |
+| --------------------- | ------------------------------------------------- | ------------------- |
+| `postgres`            | pgvector DB, port `${POSTGRES_PORT:-5532}`        | —                   |
+| `api`                 | Hono server, port `${PORT:-3110}`                 | —                   |
+| `syncer`              | refreshes owned-games list                        | `0 6 * * *` (06:00) |
+| `enricher`            | enriches new games + backfills missing fields + re-pulls fresh releases | `*/15 * * * *` |
+| `steamspy-refresher`  | refreshes SteamSpy tags / playtime weekly         | `0 5 * * *` (05:00) |
+| `youtube-syncer`      | discovers YouTube videos per game (newest first)  | `30 6 * * *` (06:30)|
 
 Non-Steam ownership syncs (Epic, GOG) run on the host via `bun run sync:<platform>`
 — they are not containerized because they need browser-flow auth that
@@ -56,6 +59,11 @@ doesn't fit the cron model. See "Multi-platform ownership" below.
    You need:
    - `STEAM_API_KEY` — get one at <https://steamcommunity.com/dev/apikey>
    - `STEAM_ID` — your 64-bit SteamID (paste your profile URL into <https://steamid.io/>)
+
+   Optional but recommended for full enrichment:
+   - `YOUTUBE_API_KEY` — see "External data" below
+   - `OPENCRITIC_API_KEY` — RapidAPI free tier; see comment block in
+     `.env.example`
 
    Local `/mcp` is open — public auth lives in the `expose-tunnels` proxy
    (see "Connecting from Claude" below).
@@ -81,7 +89,11 @@ doesn't fit the cron model. See "Multi-platform ownership" below.
    curl -X POST http://localhost:3110/sync
    ```
 5. The enricher will start working through the library in batches every 15
-   minutes (default). For 3k games at ~1.5s/game it'll take a few hours total.
+   minutes (default). For ~2-3k games at ~1.5s/game it'll take a few hours total.
+6. Launch the desktop app:
+   ```bash
+   bun run desktop
+   ```
 
 ## Multi-platform ownership (Epic, GOG)
 
@@ -128,14 +140,26 @@ on each sync — no re-auth needed unless GOG invalidates them.
 itch.io is **deliberately skipped** — most itch titles don't exist on Steam,
 so the canonical-appid model breaks down for it.
 
-## External data: videos and future sources
+## External data
 
-Per-game external data is fetched by source-specific cron containers and
-stored in side tables. Currently:
+Per-game external data is fetched by the enricher (or source-specific
+crons) and stored in side tables:
 
-- **YouTube** (`game_videos` table) — top 10 walkthrough/let's-play/review
-  videos per game. Free quota = 10,000 units/day, 100 units per search → ~100
-  games/day, so a full 2,300-game seed takes ~24 days at the floor.
+- **Steam appdetails** (`games.*`) — descriptions, screenshots, metacritic,
+  release date, developers, publishers, genres, controller support, etc.
+- **SteamSpy** (`games.*` + `game_tags`) — owner-estimate range,
+  positive/negative review counts, avg/median playtime, CCU, user-tag votes
+- **HowLongToBeat** (`games.hltb_*`) — main / +extras / completionist hours,
+  scraped from the public site (init+token+honeypot flow). Self-throttled
+  via `HLTB_DAILY_BUDGET` (default 80/process)
+- **OpenCritic** (`game_external_scores`) — aggregated critic score, tier,
+  % recommended. Requires a free RapidAPI key in `OPENCRITIC_API_KEY`.
+  Free tier is ~25 lookups/day; cron caps at 20 to leave manual headroom
+- **Steam user reviews** (`game_reviews`) — top 20 most-helpful English
+  reviews per game (public endpoint, no key)
+- **YouTube Data API v3** (`game_videos`) — top 10 walkthrough/let's-play
+  videos per game. Free quota = 10,000 units/day, 100 units per search →
+  ~100 games/day; cron capped at 90 to leave 10 manual fetches free
 
 ### YouTube setup
 
@@ -152,16 +176,33 @@ The container runs once on startup (handy after rebuilds) and then daily at
 06:30 UTC, just after Google's 00:00 PT quota reset. The cron stops cleanly
 on a 403 quotaExceeded.
 
+### OpenCritic setup
+
+OpenCritic moved their public API behind RapidAPI. Sign up at
+<https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api>,
+subscribe to the free Basic plan, copy your `X-RapidAPI-Key`, and:
+
+```bash
+echo 'OPENCRITIC_API_KEY=...' >> .env
+docker compose up -d --build api enricher
+```
+
+Without a key, OpenCritic is silently disabled and the desktop app shows a
+clear "needs RapidAPI key" placeholder pointing back to the env file.
+Metacritic still works without setup — it comes through Steam appdetails.
+
 ### Manual refresh
 
-`POST /games/:appid/refresh` re-fetches every external source for one game
-and returns a per-source result map. No internal rate-gate — upstream rate
-limits surface in the response. Intended for a future UI's "refresh" button.
+`POST /games/:appid/refresh?source=<source>` re-fetches one external source
+for one game and returns a per-source result map. Source filter is optional
+(default `all`). Per-section "Fetch now" buttons in the desktop call this
+with the right `source` so you don't burn unrelated rate budgets.
 
 ```json
 {
   "appid": 1145360,
   "name": "Hades",
+  "source": "youtube",
   "sources": {
     "youtube": { "status": "ok", "detail": { "videos": 10 } }
   }
@@ -170,19 +211,21 @@ limits surface in the response. Intended for a future UI's "refresh" button.
 
 When adding a new external source: drop a `<source>_fetched_at` column on
 `games`, add a side table if structured, plug a fetcher into the `/refresh`
-handler in `src/routes/refresh.ts`, and add a sync container to
-docker-compose with the same supercronic-with-startup-run pattern.
+handler in `src/routes/refresh.ts`, and add it to the enricher's backfill
+query in `scripts/enrich.ts`.
 
 ## Endpoints
 
 | route                              | description                                                   |
 | ---------------------------------- | ------------------------------------------------------------- |
 | `GET  /library`                    | List/search the library. `q` triggers hybrid search.          |
-| `GET  /games/:appid`               | Full record + tags + similar graph + `ownership` + `videos`   |
-| `POST /games/:appid/refresh`       | Re-fetch every external source for one game; per-source results |
-| `GET  /similar?appid=`             | Vector recs from a seed game                                  |
-| `GET  /similar?q=`                 | Vector recs from natural-language query                       |
+| `GET  /games/:appid`               | Full record + tags + similar graph + ownership + videos + reviews + scores |
+| `POST /games/:appid/refresh?source=` | Re-fetch one (or all) external sources for one game         |
+| `GET  /similar?appid=` / `?q=`     | Vector recs from a seed game or natural-language query        |
 | `GET  /stats`                      | Counts incl. per-platform breakdown + multi-platform overlap  |
+| `GET  /lists` / `POST` / `PATCH` / `DELETE`  | User-defined lists (Play next, custom playlists)    |
+| `GET  /saved_searches` / `POST` / `DELETE`   | Live saved searches with cached counts              |
+| `GET  /vibes` / `POST /vibes/regenerate`     | LLM-generated "vibe" search chips                   |
 | `POST /sync`                       | Re-fetch owned games from Steam Web API                       |
 | `GET  /mcp` / `POST /mcp`          | MCP discovery + JSON-RPC 2.0 (open locally; OAuth at proxy)   |
 
@@ -199,13 +242,28 @@ automatically.
 ?platform=<store>         steam | epic | gog
 ?min_playtime=<minutes>
 ?max_playtime=<minutes>
+?max_hltb_main=<hours>    weekend-game filter
 ?unplayed=1               only games with playtime = 0
+?recently_added=1         games added since the initial seed
+?appids=<csv>             restrict to a specific appid set
 ?limit=&offset=
 ?sort=name|relevance
 ```
 
 Each result row includes a `platforms` array showing every storefront that
-owns this appid.
+owns this appid, plus a hybrid relevance `score` when `q` is set.
+
+## Desktop app
+
+Electrobun shell at `apps/desktop/`. React + Vite + Tailwind, talks to the
+Hono API on `localhost:3110`. Custom Win11-style titlebar, JS-driven
+window resize, persisted window position, hybrid search bar, vibe chips,
+recently viewed log, saved searches, lists with right-click rename/delete,
+clickable detail-page tags, screenshot lightbox, per-source fetch buttons.
+
+```bash
+bun run desktop          # launches the desktop window
+```
 
 ## MCP tools
 
@@ -217,23 +275,22 @@ owns this appid.
 - `get_stats` — includes per-platform breakdown
 - `sync_owned`
 
-Auth: the **local** `/mcp` endpoint is open (matches anna). Public exposure
-happens via the OAuth-flowed reverse proxy in `D:\code\expose-tunnels\` — see
-"Connecting from Claude" below.
+Auth: the **local** `/mcp` endpoint is open. Public exposure happens via the
+OAuth-flowed reverse proxy in `D:\code\expose-tunnels\` — see "Connecting
+from Claude" below.
 
 ## Connecting from Claude
 
-Mirrors the anna setup. The proxy lives at
+The proxy lives at
 [`D:\code\expose-tunnels\steam-mcp-proxy.js`](../expose-tunnels/steam-mcp-proxy.js)
 and is exposed at `https://steam.share.cool.omg.lol` via the
 `expose-steam` service in `expose-tunnels/docker-compose.yml`.
 
-1. Bring up the steam stack: `docker compose up -d --build` (in this dir).
+1. Bring up this stack: `docker compose up -d --build` (in this dir).
 2. Bring up the tunnel: `docker compose up -d expose-steam` (in
    `D:\code\expose-tunnels\`). It auto-rebuilds and shares
    `https://steam.share.cool.omg.lol`.
-3. **Register an OAuth client** (only needed once — and you can reuse the
-   same `clients.json` entry that anna uses):
+3. **Register an OAuth client** (only needed once):
    ```bash
    cd D:\code\expose-tunnels
    node create-client.js
@@ -246,62 +303,66 @@ and is exposed at `https://steam.share.cool.omg.lol` via the
 
 The proxy persists tokens to
 [`steam-tokens.json`](../expose-tunnels/steam-tokens.json) so they survive
-container restarts. Clients are loaded from the shared
-[`clients.json`](../expose-tunnels/clients.json) (same file anna's proxy
-reads), so registering a client once works for both connectors.
+container restarts.
 
 ## Yaak
 
 Open the `yaak/` folder in [Yaak](https://yaak.app). The `Local` environment
-defines `baseUrl=http://localhost:3110`. Folders:
-
-- **Discover** — vibe/keyword searches (horror, cozy, cyberpunk), tag filter, untouched indies
-- **What to play** — full backlog, recently active, started-but-not-finished, deeply-played
-- **Cross-platform** — `?platform=epic`, `?platform=gog`, multi-store stats
-- **Game detail** — Hades full record, Wolfenstein TNO (the only tri-store game), refresh example
-- **Recommendations** — like Hades, like Disco Elysium, vibe queries, short+polished+rated
-- **MCP** — discovery, tools/list, and 5 tool-call examples
+defines `baseUrl=http://localhost:3110`. Folders cover Discover, What to
+play, Cross-platform, Game detail, Recommendations, Lists, Vibes, Admin
+(activity / enrich / sync / tags / hidden genres), and MCP (discovery,
+tools/list, tool-call examples).
 
 ## Schema highlights
 
 `games` has the full appdetails payload (descriptions, genres, categories,
 platforms, metacritic, controller support, price), the SteamSpy enrichment
 (owner-estimate range, positive/negative reviews, avg/median playtime, peak
-CCU), HLTB hours (main / +extras / completionist), a 768-dim `embedding`, and
-a generated `search` tsvector weighting name > genres > short description >
-about.
+CCU), HLTB hours (main / +extras / completionist), a 768-dim `embedding`,
+and a generated `search` tsvector weighting name > genres > short
+description > about. `*_fetched_at` columns gate cron retries per source.
 
 `game_tags` is the SteamSpy tag-vote table (the highest-signal field for
 "vibe" queries — feeds into the embedding doc).
 
-`game_similar` is the appid-to-appid "more like this" graph scraped from each
-store page; used for the `get_game` response and as a future re-ranker.
+`game_similar` is the appid-to-appid "more like this" graph scraped from
+each store page; surfaced under "Steam's more like this" in the desktop
+detail view, filtered to games you actually own.
+
+`game_reviews` is the top-20 most-helpful English Steam reviews per game.
+
+`game_external_scores` is per-game per-source scores (currently OpenCritic;
+extensible to IGDB / others).
+
+`game_videos` is the per-game YouTube video set.
 
 `platform_ownership` records per-storefront ownership keyed on
 `(appid, platform)` — `steam`, `epic`, or `gog` — with each platform's
-external id, acquired_at, and per-store playtime. The `is_owned` flag has
-been replaced by the existence of any row in this table.
+external id, acquired_at, and per-store playtime.
 
 `unmatched_ownership` is the diagnostic landing zone for non-Steam titles
-that didn't resolve to a Steam appid (Epic exclusives, GOG retro games, etc.).
-Not used by any user-facing route.
+that didn't resolve to a Steam appid.
 
-`game_videos` is the per-game YouTube video set discovered by `youtube-syncer`,
-plus an updated `games.youtube_fetched_at` sentinel for the cron's "what's
-next?" query.
+`lists` + `list_games` are user-defined collections. `saved_searches` are
+live queries that re-run each time they're opened.
 
 ## Notes / gotchas
 
 - Steam's `appdetails` endpoint rate-limits at ~200 requests / 5 minutes, so
-  the enricher sleeps 1500ms between games by default.
-- HLTB has no public API; we lazy-fetch their search token from their JS
-  bundle and cache it for 6h. If they rotate it, the next request retries.
+  the enricher sleeps 1500ms between games by default and the per-tick
+  batch sizes are tuned to stay under that ceiling.
+- HLTB has no public API; we hit their `/api/find/init` → `/api/find` flow
+  with the `x-auth-token` / `x-hp-key` / `x-hp-val` headers + body
+  honeypot they introduced in their 2025 redesign. If they change it
+  again, see `src/lib/hltb.ts`.
 - YouTube quota = 10,000 units/day, 100 units per search → ~100 games/day.
-  `youtube-syncer` stops cleanly on the 403 instead of hammering.
-- Cron containers should follow the "startup-run + supercronic" pattern (see
+  The cron caps at 90 to leave 10 slots free for manual fetches.
+- OpenCritic's free RapidAPI tier is ~25 lookups/day; cron caps at 20 to
+  leave headroom. Process-wide rate-limit short-circuit on 429.
+- Cron containers follow the "startup-run + supercronic" pattern (see
   `enricher` and `youtube-syncer` commands) so a rebuild backfills
   immediately instead of waiting for the next scheduled fire.
 - `nomic-embed-text` returns 768 dims; if you switch models you must update
   `vector(768)` in `init.sql` and the schema.
 - Default Postgres host port is `5532` (not the usual 5432) to avoid clashing
-  with `anna`.
+  with other local Postgres instances.
