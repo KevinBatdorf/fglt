@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_vibes
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: LLM-generated "vibe" search chips for the home/header. Cached 24h; regenerate forces a synchronous re-roll.
+headers: []
+name: Vibes
+sortPriority: 5.0

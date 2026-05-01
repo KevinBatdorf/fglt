@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { type SteamImageVariant, steamImg } from "./lib/api";
+import { useEffect, useState } from 'react';
+import { type SteamImageVariant, steamImg } from './lib/api';
 
 interface Props {
 	appid: number;
@@ -8,8 +8,14 @@ interface Props {
 	/** API-supplied fallback (typically `header_image`) */
 	fallback?: string | null;
 	className?: string;
-	loading?: "lazy" | "eager";
+	loading?: 'lazy' | 'eager';
 	alt?: string;
+	/**
+	 * When every CDN source fails, the default behavior is to render the game
+	 * name as a text placeholder. For tiny inline icons next to a label,
+	 * pass `false` to render an empty box instead so the title isn't doubled up.
+	 */
+	showFallbackText?: boolean;
 }
 
 /**
@@ -24,8 +30,9 @@ export function GameImage({
 	variant,
 	fallback,
 	className,
-	loading = "lazy",
+	loading = 'lazy',
 	alt,
+	showFallbackText = true,
 }: Props) {
 	const sources = buildSources(appid, variant, fallback ?? null);
 	const [idx, setIdx] = useState(0);
@@ -37,9 +44,9 @@ export function GameImage({
 	if (idx >= sources.length) {
 		return (
 			<div
-				className={`${className ?? ""} bg-zinc-900 flex items-center justify-center text-zinc-600 text-[11px] px-3 text-center leading-snug`}
+				className={`${className ?? ''} bg-zinc-900 flex items-center justify-center text-zinc-600 text-[11px] px-3 text-center leading-snug`}
 			>
-				{name}
+				{showFallbackText ? name : ''}
 			</div>
 		);
 	}
@@ -63,8 +70,8 @@ function buildSources(
 	const out: string[] = [steamImg(appid, variant)];
 	// Standard header is the most-likely-to-exist variant; chain it for any
 	// other primary variant.
-	if (variant !== "header") {
-		out.push(steamImg(appid, "header"));
+	if (variant !== 'header') {
+		out.push(steamImg(appid, 'header'));
 	}
 	if (apiFallback && !out.includes(apiFallback)) {
 		out.push(apiFallback);

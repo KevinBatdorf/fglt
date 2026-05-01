@@ -162,11 +162,25 @@ export function libraryRoutes(raw: postgres.Sql) {
 		if (!game) return c.json({ error: 'not found' }, 404);
 		const tags =
 			await raw`SELECT tag, votes FROM game_tags WHERE appid = ${appid} ORDER BY votes DESC`;
+		// "More like this" — Steam's per-game recommendation graph, filtered
+		// to games we actually own on at least one platform. INNER JOIN drops
+		// orphan appids; the platform aggregation lets the UI show badges.
 		const similar = await raw`
-			SELECT s.similar_appid AS appid, s.rank, g.name, g.header_image
+			SELECT
+				s.similar_appid AS appid,
+				s.rank,
+				g.name,
+				g.header_image,
+				COALESCE(
+					ARRAY_AGG(DISTINCT po.platform ORDER BY po.platform)
+						FILTER (WHERE po.platform IS NOT NULL),
+					ARRAY[]::text[]
+				) AS platforms
 			FROM game_similar s
-			LEFT JOIN games g ON g.appid = s.similar_appid
+			JOIN games g ON g.appid = s.similar_appid
+			JOIN platform_ownership po ON po.appid = s.similar_appid
 			WHERE s.appid = ${appid}
+			GROUP BY s.similar_appid, s.rank, g.name, g.header_image
 			ORDER BY s.rank ASC
 		`;
 		const ownership = await raw`
@@ -188,20 +202,44 @@ export function libraryRoutes(raw: postgres.Sql) {
 			WHERE lg.appid = ${appid}
 			ORDER BY l.is_system DESC, l.created_at ASC
 		`;
+		// Steam user reviews — newest first within helpfulness band so the
+		// UI gets recent + helpful instead of years-old top-of-helpful posts.
+		const reviews = await raw`
+			SELECT recommendation_id, voted_up, votes_up, votes_funny,
+			       weighted_vote_score, playtime_at_review_min, language,
+			       review_text, timestamp_created, timestamp_updated
+			FROM game_reviews
+			WHERE appid = ${appid}
+			ORDER BY weighted_vote_score DESC NULLS LAST, timestamp_created DESC
+			LIMIT 20
+		`;
+		const externalScores = await raw`
+			SELECT source, score, max_score, tier, url,
+			       percent_recommended, num_reviews, fetched_at
+			FROM game_external_scores
+			WHERE appid = ${appid}
+		`;
 		const platforms = ownership.map((o) => o.platform as string);
 		const {
 			embedding: _emb,
 			search: _s,
+			// `platforms` on the games row is OS support (windows/mac/linux);
+			// the API surfaces ownership platforms under `platforms`, so
+			// rename to `os_support` to avoid the collision.
+			platforms: osSupport,
 			...rest
 		} = game as Record<string, unknown>;
 		return c.json({
 			...rest,
 			platforms,
+			os_support: osSupport,
 			ownership,
 			tags,
 			similar,
 			videos,
 			lists,
+			reviews,
+			external_scores: externalScores,
 		});
 	});
 

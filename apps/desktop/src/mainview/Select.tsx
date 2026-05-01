@@ -22,7 +22,7 @@ export function Select({
 	className,
 }: Props) {
 	return (
-		<div className={`relative inline-block ${className ?? ""}`}>
+		<div className={`relative inline-block ${className ?? ''}`}>
 			<select
 				value={value}
 				onChange={(e) => onChange(e.target.value)}

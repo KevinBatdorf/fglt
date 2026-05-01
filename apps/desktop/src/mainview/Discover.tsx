@@ -1,27 +1,27 @@
-import { useEffect, useState } from "react";
-import { GameImage } from "./GameImage";
-import { type CurateResponse, type LibraryGame, api } from "./lib/api";
-import type { InstalledIndex } from "../shared/types";
+import { useEffect, useState } from 'react';
+import type { InstalledIndex } from '../shared/types';
+import { GameGrid } from './GameGrid';
+import { api, type CurateResponse, type LibraryGame } from './lib/api';
 
 interface Props {
-	what: "trending" | "random" | "recommended";
+	what: 'trending' | 'random' | 'recommended';
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }
 
-const COPY: Record<Props["what"], { title: string; subtitle: string }> = {
+const COPY: Record<Props['what'], { title: string; subtitle: string }> = {
 	trending: {
-		title: "Trending in your library",
+		title: 'Trending in your library',
 		subtitle:
-			"Games you own, sorted by Steam peak-concurrent-player count (snapshot from when each game was enriched — coarse cultural-heat proxy, not real-time)",
+			'Games you own, sorted by Steam peak-concurrent-player count (snapshot from when each game was enriched — coarse cultural-heat proxy, not real-time)',
 	},
 	random: {
-		title: "Random picks",
-		subtitle: "A fresh draw from your unplayed pile",
+		title: 'Random picks',
+		subtitle: 'A fresh draw from your unplayed pile',
 	},
 	recommended: {
-		title: "Recommended for you",
-		subtitle: "Vector-similar to your most-played games",
+		title: 'Recommended for you',
+		subtitle: 'Vector-similar to your most-played games',
 	},
 };
 
@@ -37,7 +37,7 @@ export function Discover({ what, installed, onSelect }: Props) {
 			.curate(ctrl.signal)
 			.then(setData)
 			.catch((e) => {
-				if (e.name !== "AbortError") setError(e.message);
+				if (e.name !== 'AbortError') setError(e.message);
 			});
 		return () => ctrl.abort();
 	}, [reroll, what]);
@@ -51,7 +51,7 @@ export function Discover({ what, installed, onSelect }: Props) {
 					<h1 className="text-lg font-semibold">{COPY[what].title}</h1>
 					<p className="text-xs text-zinc-500 mt-0.5">{COPY[what].subtitle}</p>
 				</div>
-				{what === "random" && data && (
+				{what === 'random' && data && (
 					<button
 						type="button"
 						onClick={() => setReroll((n) => n + 1)}
@@ -63,32 +63,26 @@ export function Discover({ what, installed, onSelect }: Props) {
 			</header>
 
 			{error && <div className="text-red-400 text-sm">{error}</div>}
-			{!data && !error && (
-				<div className="text-zinc-500 text-sm">Loading…</div>
-			)}
+			{!data && !error && <div className="text-zinc-500 text-sm">Loading…</div>}
 			{data && games.length === 0 && (
 				<div className="text-zinc-500 text-sm">Nothing to show yet.</div>
 			)}
 			{data && games.length > 0 && (
-				<div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
-					{games.map((g) => (
-						<Card
-							key={g.appid}
-							game={g}
-							installed={installed}
-							onSelect={() => onSelect(g.appid)}
-						/>
-					))}
-				</div>
+				<GameGrid
+					games={games}
+					installed={installed}
+					onSelect={onSelect}
+					showMatchPct={false}
+				/>
 			)}
 		</div>
 	);
 }
 
-function pick(data: CurateResponse | null, what: Props["what"]): LibraryGame[] {
+function pick(data: CurateResponse | null, what: Props['what']): LibraryGame[] {
 	if (!data) return [];
-	if (what === "trending") return data.trending;
-	if (what === "random") return data.picks_tonight;
+	if (what === 'trending') return data.trending;
+	if (what === 'random') return data.picks_tonight;
 	// recommended — blend obsession + recently + hidden_gems, dedup by appid
 	const merged = [
 		...(data.because_obsession?.recs ?? []),
@@ -105,60 +99,3 @@ function pick(data: CurateResponse | null, what: Props["what"]): LibraryGame[] {
 	return out;
 }
 
-function Card({
-	game,
-	installed,
-	onSelect,
-}: {
-	game: LibraryGame;
-	installed: InstalledIndex | null;
-	onSelect: () => void;
-}) {
-	const isInstalledHere =
-		installed !== null && installed.steam.includes(game.appid);
-	const positivePct =
-		game.positive && game.negative !== null
-			? Math.round((game.positive / (game.positive + (game.negative ?? 0))) * 100)
-			: null;
-	const releaseYear =
-		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
-	return (
-		<button
-			type="button"
-			onClick={onSelect}
-			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
-		>
-			<div className="relative">
-				<GameImage
-					appid={game.appid}
-					name={game.name}
-					variant="library_capsule"
-					fallback={game.header_image}
-					className="w-full aspect-[2/3] object-cover bg-zinc-900 group-hover:scale-[1.02] transition-transform"
-				/>
-				{isInstalledHere && (
-					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
-						Installed
-					</span>
-				)}
-				{releaseYear && (
-					<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
-						{releaseYear}
-					</span>
-				)}
-			</div>
-			<div className="p-2.5">
-				<div className="text-xs font-medium text-zinc-100 line-clamp-2 leading-tight min-h-[2.25rem]">
-					{game.name}
-				</div>
-				<div className="mt-1.5 flex items-center gap-2 text-[10px] text-zinc-500 tabular-nums flex-wrap">
-					{game.hltb_main !== null && <span>{game.hltb_main}h main</span>}
-					{positivePct !== null && <span>{positivePct}% positive</span>}
-					{game.playtime_min > 0 && (
-						<span>{Math.round(game.playtime_min / 60)}h played</span>
-					)}
-				</div>
-			</div>
-		</button>
-	);
-}

@@ -1,24 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AllGames } from "./AllGames";
-import { Discover } from "./Discover";
-import { GameDetail } from "./GameDetail";
-import { GameImage } from "./GameImage";
-import { Home } from "./Home";
-import { Select } from "./Select";
-import { Settings } from "./Settings";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { InstalledIndex } from '../shared/types';
+import { AllGames } from './AllGames';
+import { Discover } from './Discover';
+import { GameGrid } from './GameGrid';
+import { GameDetail } from './GameDetail';
+import { Home } from './Home';
+import { ResizeEdges } from './ResizeEdges';
 import {
+	api,
 	type LibraryGame,
 	type ListSummary,
+	notifyListsChanged,
+	type SavedSearchSummary,
 	type Stats,
-	api,
-} from "./lib/api";
-import { rpc } from "./lib/rpc";
-import { type View, Sidebar } from "./Sidebar";
-import { getVibesEnabled } from "./lib/prefs";
-import { VIBES } from "./lib/vibes";
-import type { InstalledIndex } from "../shared/types";
+} from './lib/api';
+import { getVibesCount, getVibesEnabled } from './lib/prefs';
+import { rpc } from './lib/rpc';
+import { VIBES } from './lib/vibes';
+import { Select } from './Select';
+import { Settings } from './Settings';
+import { Sidebar, type View } from './Sidebar';
+import { TitleBar } from './TitleBar';
 
-const RECENT_KEY = "seg.recentSearches.v1";
+const RECENT_KEY = 'seg.recentSearches.v1';
 const RECENT_MAX = 8;
 
 function readRecent(): string[] {
@@ -32,7 +36,10 @@ function readRecent(): string[] {
 }
 function writeRecent(items: string[]) {
 	try {
-		localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, RECENT_MAX)));
+		localStorage.setItem(
+			RECENT_KEY,
+			JSON.stringify(items.slice(0, RECENT_MAX)),
+		);
 	} catch {
 		/* ignore */
 	}
@@ -41,16 +48,19 @@ function writeRecent(items: string[]) {
 function App() {
 	const [stats, setStats] = useState<Stats | null>(null);
 	const [installed, setInstalled] = useState<InstalledIndex | null>(null);
-	const [view, setView] = useState<View>({ kind: "home" });
+	const [view, setView] = useState<View>({ kind: 'home' });
 	const [history, setHistory] = useState<View[]>([]);
-	const [query, setQuery] = useState("");
+	const [query, setQuery] = useState('');
 	const [recent, setRecent] = useState<string[]>(readRecent);
+	const [lists, setLists] = useState<ListSummary[]>([]);
+	const [detailGameName, setDetailGameName] = useState<string | null>(null);
+	const [vibesRefreshing, setVibesRefreshing] = useState(false);
 	const mainRef = useRef<HTMLElement>(null);
 
 	// Reset scroll on every view change so search results / list switches
 	// don't leave the user mid-page.
 	useEffect(() => {
-		mainRef.current?.scrollTo({ top: 0, behavior: "auto" });
+		mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
 	}, [view]);
 
 	const refreshStats = useCallback(() => {
@@ -60,14 +70,23 @@ function App() {
 	useEffect(() => {
 		refreshStats();
 		rpc.request.getInstalledIndex({}).then(setInstalled).catch(console.error);
+		api
+			.lists()
+			.then((d) => setLists(d.lists))
+			.catch(console.error);
 	}, [refreshStats]);
+
+	// Reset the resolved detail-page game name whenever we leave detail.
+	useEffect(() => {
+		if (view.kind !== 'detail') setDetailGameName(null);
+	}, [view]);
 
 	const navigate = useCallback(
 		(next: View) => {
 			setHistory((h) => [...h, view]);
 			setView(next);
-			if (next.kind === "search") setQuery(next.query);
-			else setQuery("");
+			if (next.kind === 'search') setQuery(next.query);
+			else setQuery('');
 		},
 		[view],
 	);
@@ -76,12 +95,12 @@ function App() {
 	// Random re-rolls. We bypass the Discover view entirely.
 	const handleSidebarNavigate = useCallback(
 		async (next: View) => {
-			if (next.kind === "discover" && next.what === "random") {
+			if (next.kind === 'discover' && next.what === 'random') {
 				try {
-					const game = await api.random({ unplayed: "1" });
-					navigate({ kind: "detail", appid: game.appid });
+					const game = await api.random({ unplayed: '1' });
+					navigate({ kind: 'detail', appid: game.appid });
 				} catch (e) {
-					console.error("random fetch failed", e);
+					console.error('random fetch failed', e);
 				}
 				return;
 			}
@@ -101,21 +120,21 @@ function App() {
 			if (h.length === 0) return h;
 			const prev = h[h.length - 1];
 			setView(prev);
-			if (prev.kind === "search") setQuery(prev.query);
-			else setQuery("");
+			if (prev.kind === 'search') setQuery(prev.query);
+			else setQuery('');
 			return h.slice(0, -1);
 		});
 	}, []);
 
 	const home = useCallback(() => {
 		setHistory([]);
-		setView({ kind: "home" });
-		setQuery("");
+		setView({ kind: 'home' });
+		setQuery('');
 	}, []);
 
 	const open = useCallback(
 		(appid: number) => {
-			navigate({ kind: "detail", appid });
+			navigate({ kind: 'detail', appid });
 		},
 		[navigate],
 	);
@@ -123,16 +142,16 @@ function App() {
 	useEffect(() => {
 		const q = query.trim();
 		if (q.length === 0) {
-			if (view.kind === "search") setView({ kind: "home" });
+			if (view.kind === 'search') setView({ kind: 'home' });
 			return;
 		}
-		if (view.kind !== "search" || view.query !== q) {
-			setView({ kind: "search", query: q });
+		if (view.kind !== 'search' || view.query !== q) {
+			setView({ kind: 'search', query: q });
 		}
 	}, [query, view]);
 
 	useEffect(() => {
-		if (view.kind !== "search") return;
+		if (view.kind !== 'search') return;
 		const q = view.query;
 		const t = setTimeout(() => {
 			setRecent((cur) => {
@@ -152,104 +171,201 @@ function App() {
 				target instanceof HTMLInputElement ||
 				target instanceof HTMLTextAreaElement ||
 				target?.isContentEditable;
-			if (e.altKey && e.key === "ArrowLeft") {
+			if (e.altKey && e.key === 'ArrowLeft') {
 				e.preventDefault();
 				back();
 				return;
 			}
-			if (e.key === "Backspace" && !editing) {
+			if (e.key === 'Backspace' && !editing) {
 				e.preventDefault();
 				back();
 				return;
 			}
-			if (e.key === "Escape" && !editing) {
+			if (e.key === 'Escape' && !editing) {
 				home();
 				return;
 			}
 		};
-		window.addEventListener("keydown", handler);
-		return () => window.removeEventListener("keydown", handler);
+		window.addEventListener('keydown', handler);
+		return () => window.removeEventListener('keydown', handler);
 	}, [back, home]);
 
+	// Mouse XButton1 (back) navigates history. XButton2 (forward) is intentionally
+	// unwired — we don't keep a forward stack.
+	useEffect(() => {
+		const handler = (e: MouseEvent) => {
+			if (e.button === 3) {
+				e.preventDefault();
+				back();
+			}
+		};
+		window.addEventListener('mousedown', handler);
+		// Some browsers/OSes only expose side buttons via auxclick.
+		window.addEventListener('auxclick', handler);
+		return () => {
+			window.removeEventListener('mousedown', handler);
+			window.removeEventListener('auxclick', handler);
+		};
+	}, [back]);
+
+	// Suppress the default browser context menu app-wide. Components that
+	// want a custom right-click menu (e.g. Sidebar list items) opt in by
+	// stopping propagation on their own contextmenu handler.
+	useEffect(() => {
+		const handler = (e: MouseEvent) => e.preventDefault();
+		window.addEventListener('contextmenu', handler);
+		return () => window.removeEventListener('contextmenu', handler);
+	}, []);
+
+	const titleSuffix = useMemo(
+		() => deriveTitleSuffix(view, lists, detailGameName, query),
+		[view, lists, detailGameName, query],
+	);
+	const windowTitle = titleSuffix ? `SEG · ${titleSuffix}` : 'SEG';
+	const showHeader = view.kind !== 'detail' && view.kind !== 'settings';
+
 	return (
-		<div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-			<Sidebar
-				view={view}
-				onNavigate={handleSidebarNavigate}
-				recentSearches={recent}
-				onClearRecent={() => {
-					setRecent([]);
-					writeRecent([]);
-				}}
-				platformCounts={stats?.platforms ?? {}}
-			/>
+		<div className="relative h-screen bg-zinc-950 text-zinc-100 flex flex-col border border-zinc-700">
+			<ResizeEdges />
+			<TitleBar title={windowTitle} />
+			<div className="flex-1 flex min-h-0">
+				<Sidebar
+					view={view}
+					onNavigate={handleSidebarNavigate}
+					recentSearches={recent}
+					onClearRecent={() => {
+						setRecent([]);
+						writeRecent([]);
+					}}
+					platformCounts={stats?.platforms ?? {}}
+				/>
 
-			<div className="flex-1 min-w-0 flex flex-col">
-				<header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur border-b border-zinc-800/80 px-6 pt-3 pb-3">
-					<SearchBar query={query} setQuery={setQuery} />
-					<VibeRow
-						onPick={(q) => {
-							setQuery(q);
-							navigate({ kind: "search", query: q });
-						}}
-					/>
-				</header>
+				<div className="flex-1 min-w-0 flex flex-col">
+					{showHeader && (
+						<header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur border-b border-zinc-800/80 px-6 pt-3 pb-3">
+							<SearchBar
+								query={query}
+								setQuery={setQuery}
+								refreshing={vibesRefreshing}
+								setRefreshing={setVibesRefreshing}
+							/>
+							<VibeRow
+								refreshing={vibesRefreshing}
+								onPick={(q) => {
+									setQuery(q);
+									navigate({ kind: 'search', query: q });
+								}}
+							/>
+						</header>
+					)}
 
-				<main ref={mainRef} className="flex-1 px-6 pt-2 pb-8 overflow-y-auto">
-					<MainView
-						view={view}
-						stats={stats}
-						installed={installed}
-						onSelectGame={open}
-						onPickVibe={(q) => {
-							setQuery(q);
-							navigate({ kind: "search", query: q });
-						}}
-						onBack={back}
-						onHome={home}
-						canBack={history.length > 0}
-						refreshStats={refreshStats}
-					/>
-				</main>
+					<main ref={mainRef} className="flex-1 px-6 pt-2 pb-8 overflow-y-auto">
+						<MainView
+							view={view}
+							stats={stats}
+							installed={installed}
+							onSelectGame={open}
+							onPickVibe={(q) => {
+								setQuery(q);
+								navigate({ kind: 'search', query: q });
+							}}
+							onBack={back}
+							canBack={history.length > 0}
+							refreshStats={refreshStats}
+							onDetailLoaded={setDetailGameName}
+						/>
+					</main>
+				</div>
 			</div>
 		</div>
 	);
 }
 
+function deriveTitleSuffix(
+	view: View,
+	lists: ListSummary[],
+	detailName: string | null,
+	query: string,
+): string | null {
+	switch (view.kind) {
+		case 'home':
+			return 'Home';
+		case 'detail':
+			return detailName;
+		case 'search':
+			return view.query ? `"${view.query}"` : query ? `"${query}"` : 'Search';
+		case 'filter':
+			return PRESET_LABEL[view.what] ?? 'Library';
+		case 'discover':
+			return DISCOVER_LABEL[view.what] ?? 'Discover';
+		case 'platform':
+			return PLATFORM_LABEL[view.platform] ?? view.platform;
+		case 'list':
+			return lists.find((l) => l.slug === view.slug)?.name ?? view.slug;
+		case 'settings':
+			return 'Settings';
+		default:
+			return null;
+	}
+}
+
+const PRESET_LABEL: Record<string, string> = {
+	all: 'All games',
+	unplayed: 'Unplayed',
+	recently_played: 'Recently played',
+	recently_added: 'Recently added',
+};
+
+const DISCOVER_LABEL: Record<string, string> = {
+	trending: 'Trending',
+	random: 'Random',
+	recommended: 'Recommended',
+};
+
+const PLATFORM_LABEL: Record<string, string> = {
+	steam: 'Steam',
+	epic: 'Epic Games',
+	gog: 'GOG',
+};
+
 function SearchBar({
 	query,
 	setQuery,
+	refreshing,
+	setRefreshing,
 }: {
 	query: string;
 	setQuery: (q: string) => void;
+	refreshing: boolean;
+	setRefreshing: (r: boolean) => void;
 }) {
-	const [vibesAi, setVibesAi] = useState({ enabled: false, refreshing: false });
+	const [vibesAi, setVibesAi] = useState({ enabled: false });
 	const [, forceVibesUpdate] = useState(0);
 	const [vibesShown, setVibesShown] = useState(getVibesEnabled());
 
 	useEffect(() => {
 		api
 			.vibes()
-			.then((d) => setVibesAi((s) => ({ ...s, enabled: d.ai_enabled })))
+			.then((d) => setVibesAi({ enabled: d.ai_enabled }))
 			.catch(() => {
 				/* leave disabled */
 			});
 		const handler = () => setVibesShown(getVibesEnabled());
-		window.addEventListener("seg:prefs:vibes-toggled", handler);
-		return () => window.removeEventListener("seg:prefs:vibes-toggled", handler);
+		window.addEventListener('seg:prefs:vibes-toggled', handler);
+		return () => window.removeEventListener('seg:prefs:vibes-toggled', handler);
 	}, []);
 
 	async function handleRegenerate() {
-		setVibesAi((s) => ({ ...s, refreshing: true }));
+		setRefreshing(true);
 		try {
 			await api.regenerateVibes();
 			// Bump VibeRow so it refetches; cheap signal via window event.
-			window.dispatchEvent(new CustomEvent("seg:vibes:regenerated"));
+			window.dispatchEvent(new CustomEvent('seg:vibes:regenerated'));
 			forceVibesUpdate((n) => n + 1);
 		} catch (e) {
-			console.error("vibes regenerate failed:", e);
+			console.error('vibes regenerate failed:', e);
 		} finally {
-			setVibesAi((s) => ({ ...s, refreshing: false }));
+			setRefreshing(false);
 		}
 	}
 
@@ -287,7 +403,7 @@ function SearchBar({
 				{query && (
 					<button
 						type="button"
-						onClick={() => setQuery("")}
+						onClick={() => setQuery('')}
 						aria-label="Clear search"
 						title="Clear (Esc)"
 						className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 flex items-center justify-center text-sm leading-none"
@@ -300,26 +416,34 @@ function SearchBar({
 				<button
 					type="button"
 					onClick={handleRegenerate}
-					disabled={vibesAi.refreshing}
+					disabled={refreshing}
 					title="Regenerate vibe chips via your AI provider, grounded in your library's tags"
 					className="shrink-0 h-9 px-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 transition-colors flex items-center gap-1.5 enabled:hover:bg-zinc-800 enabled:hover:border-zinc-700 enabled:hover:text-zinc-100 disabled:cursor-default disabled:text-zinc-500"
 				>
 					<span
 						aria-hidden
-						className={vibesAi.refreshing ? "animate-spin inline-block" : ""}
+						className={refreshing ? 'animate-spin inline-block' : ''}
 					>
 						↻
 					</span>
-					<span>{vibesAi.refreshing ? "Generating…" : "New vibes"}</span>
+					<span>{refreshing ? 'Generating…' : 'New vibes'}</span>
 				</button>
 			)}
 		</div>
 	);
 }
 
-function VibeRow({ onPick }: { onPick: (query: string) => void }) {
-	const [vibes, setVibes] = useState<{ label: string; query: string; emoji: string }[]>(VIBES);
+function VibeRow({
+	onPick,
+	refreshing,
+}: {
+	onPick: (query: string) => void;
+	refreshing: boolean;
+}) {
+	const [vibes, setVibes] =
+		useState<{ label: string; query: string; emoji: string }[]>(VIBES);
 	const [shown, setShown] = useState(getVibesEnabled());
+	const [count, setCount] = useState(getVibesCount());
 
 	const reload = useCallback(() => {
 		api
@@ -335,20 +459,27 @@ function VibeRow({ onPick }: { onPick: (query: string) => void }) {
 	useEffect(() => {
 		reload();
 		const onRegen = () => reload();
-		const onToggle = () => setShown(getVibesEnabled());
-		window.addEventListener("seg:vibes:regenerated", onRegen);
-		window.addEventListener("seg:prefs:vibes-toggled", onToggle);
+		const onToggle = () => {
+			setShown(getVibesEnabled());
+			setCount(getVibesCount());
+		};
+		window.addEventListener('seg:vibes:regenerated', onRegen);
+		window.addEventListener('seg:prefs:vibes-toggled', onToggle);
 		return () => {
-			window.removeEventListener("seg:vibes:regenerated", onRegen);
-			window.removeEventListener("seg:prefs:vibes-toggled", onToggle);
+			window.removeEventListener('seg:vibes:regenerated', onRegen);
+			window.removeEventListener('seg:prefs:vibes-toggled', onToggle);
 		};
 	}, [reload]);
 
-	if (!shown) return null;
+	if (!shown || count === 0) return null;
 
 	return (
-		<div className="mt-3 flex flex-wrap gap-1.5">
-			{vibes.map((v) => (
+		<div
+			className={`mt-3 flex flex-wrap gap-1.5 transition-opacity duration-200 ${
+				refreshing ? 'opacity-40 pointer-events-none' : 'opacity-100'
+			}`}
+		>
+			{vibes.slice(0, count).map((v) => (
 				<button
 					type="button"
 					key={v.label}
@@ -370,9 +501,9 @@ function MainView({
 	onSelectGame,
 	onPickVibe,
 	onBack,
-	onHome,
 	canBack,
 	refreshStats,
+	onDetailLoaded,
 }: {
 	view: View;
 	stats: Stats | null;
@@ -380,26 +511,31 @@ function MainView({
 	onSelectGame: (appid: number) => void;
 	onPickVibe: (q: string) => void;
 	onBack: () => void;
-	onHome: () => void;
 	canBack: boolean;
 	refreshStats: () => void;
+	onDetailLoaded: (name: string | null) => void;
 }) {
-	if (view.kind === "home")
+	if (view.kind === 'home')
 		return (
-			<Home installed={installed} onSelectGame={onSelectGame} onPickVibe={onPickVibe} />
+			<Home
+				installed={installed}
+				onSelectGame={onSelectGame}
+				onPickVibe={onPickVibe}
+			/>
 		);
-	if (view.kind === "detail")
+	if (view.kind === 'detail')
 		return (
 			<GameDetail
 				appid={view.appid}
 				installed={installed}
 				canBack={canBack}
 				onBack={onBack}
-				onHome={onHome}
 				onNavigate={onSelectGame}
+				onLoaded={onDetailLoaded}
+				onSearch={(q) => onPickVibe(q)}
 			/>
 		);
-	if (view.kind === "search")
+	if (view.kind === 'search')
 		return (
 			<SearchResults
 				query={view.query}
@@ -407,7 +543,7 @@ function MainView({
 				onSelect={onSelectGame}
 			/>
 		);
-	if (view.kind === "filter") {
+	if (view.kind === 'filter') {
 		return (
 			<AllGames
 				platformFilter={null}
@@ -417,11 +553,15 @@ function MainView({
 			/>
 		);
 	}
-	if (view.kind === "discover")
+	if (view.kind === 'discover')
 		return (
-			<Discover what={view.what} installed={installed} onSelect={onSelectGame} />
+			<Discover
+				what={view.what}
+				installed={installed}
+				onSelect={onSelectGame}
+			/>
 		);
-	if (view.kind === "platform")
+	if (view.kind === 'platform')
 		return (
 			<AllGames
 				platformFilter={view.platform}
@@ -429,35 +569,79 @@ function MainView({
 				onSelect={onSelectGame}
 			/>
 		);
-	if (view.kind === "list")
+	if (view.kind === 'list')
 		return (
-			<ListView slug={view.slug} installed={installed} onSelect={onSelectGame} />
+			<ListView
+				slug={view.slug}
+				installed={installed}
+				onSelect={onSelectGame}
+			/>
 		);
-	if (view.kind === "settings")
-		return <Settings stats={stats} onStatsRefresh={refreshStats} />;
+	if (view.kind === 'saved_search')
+		return (
+			<SavedSearchView
+				slug={view.slug}
+				installed={installed}
+				onSelect={onSelectGame}
+			/>
+		);
+	if (view.kind === 'settings')
+		return (
+			<Settings
+				stats={stats}
+				onStatsRefresh={refreshStats}
+				onSelect={onSelectGame}
+			/>
+		);
 	return null;
 }
 
-type SearchSort = "match" | "rating" | "popularity" | "playtime" | "year" | "name";
+type SearchSort =
+	| 'match'
+	| 'rating'
+	| 'popularity'
+	| 'playtime'
+	| 'year'
+	| 'name'
+	| 'metacritic'
+	| 'reviews'
+	| 'controversial'
+	| 'hltb_short'
+	| 'hidden_gems';
 
 function SearchResults({
 	query,
 	installed,
 	onSelect,
+	initialSort,
+	initialTag,
+	title,
 }: {
 	query: string;
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
+	/** Override the default starting sort (used by saved searches). */
+	initialSort?: SearchSort;
+	/** Override the default starting tag filter (used by saved searches). */
+	initialTag?: string;
+	/** Override the auto-generated header title (e.g. "Curated: Quick puzzles"). */
+	title?: string;
 }) {
 	const [results, setResults] = useState<LibraryGame[]>([]);
-	const [loading, setLoading] = useState(false);
+	// Start `true` so the very first render shows "Searching…" instead of
+	// the empty "No matches." flash before the effect kicks in. Also reset
+	// to true at the top of each fetch so old results don't show stale.
+	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [sort, setSort] = useState<SearchSort>("match");
-	const [tag, setTag] = useState<string>("");
+	const [sort, setSort] = useState<SearchSort>(initialSort ?? 'match');
+	const [tag, setTag] = useState<string>(initialTag ?? '');
 	const [allTags, setAllTags] = useState<{ tag: string; games: number }[]>([]);
 
 	useEffect(() => {
-		api.tags().then((d) => setAllTags(d.tags)).catch(console.warn);
+		api
+			.tags()
+			.then((d) => setAllTags(d.tags))
+			.catch(console.warn);
 	}, []);
 
 	useEffect(() => {
@@ -473,7 +657,7 @@ function SearchResults({
 			.library(params, ctrl.signal)
 			.then((d) => setResults(d.results))
 			.catch((e) => {
-				if (e.name !== "AbortError") setError(e.message);
+				if (e.name !== 'AbortError') setError(e.message);
 			})
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
@@ -481,26 +665,50 @@ function SearchResults({
 
 	const visible = useMemo(() => {
 		const out = results;
-		if (sort === "match") return out;
+		if (sort === 'match') return out;
 		const sorted = [...out];
 		sorted.sort((a, b) => {
 			switch (sort) {
-				case "rating": {
+				case 'rating': {
 					const ra = ratingPct(a) ?? -1;
 					const rb = ratingPct(b) ?? -1;
 					return rb - ra;
 				}
-				case "popularity":
+				case 'popularity':
 					return (b.positive ?? 0) - (a.positive ?? 0);
-				case "playtime":
+				case 'playtime':
 					return (b.playtime_min ?? 0) - (a.playtime_min ?? 0);
-				case "year": {
-					const ya = Number(a.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
-					const yb = Number(b.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0);
+				case 'year': {
+					const ya = Number(
+						a.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0,
+					);
+					const yb = Number(
+						b.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0,
+					);
 					return yb - ya;
 				}
-				case "name":
-					return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+				case 'name':
+					return a.name.localeCompare(b.name, undefined, {
+						sensitivity: 'base',
+					});
+				case 'metacritic':
+					// nulls sink so unrated games don't dominate the top
+					return (b.metacritic ?? -1) - (a.metacritic ?? -1);
+				case 'reviews': {
+					const ta = (a.positive ?? 0) + (a.negative ?? 0);
+					const tb = (b.positive ?? 0) + (b.negative ?? 0);
+					return tb - ta;
+				}
+				case 'controversial':
+					return controversialScore(b) - controversialScore(a);
+				case 'hltb_short': {
+					// nulls sink — we want known short-mains at the top
+					const ha = a.hltb_main ?? Number.POSITIVE_INFINITY;
+					const hb = b.hltb_main ?? Number.POSITIVE_INFINITY;
+					return ha - hb;
+				}
+				case 'hidden_gems':
+					return hiddenGemScore(b) - hiddenGemScore(a);
 				default:
 					return 0;
 			}
@@ -518,13 +726,30 @@ function SearchResults({
 		<div>
 			<header className="mb-3">
 				<h1 className="text-lg font-semibold">
-					{visible.length} {visible.length === 1 ? "result" : "results"} for{" "}
-					<span className="text-zinc-300">"{query}"</span>
+					{title ? (
+						<>
+							<span className="text-zinc-400 font-normal text-base mr-2">
+								Curated:
+							</span>
+							{title}
+							<span className="ml-2 text-sm text-zinc-500 font-normal">
+								({visible.length} {visible.length === 1 ? 'result' : 'results'})
+							</span>
+						</>
+					) : (
+						<>
+							{visible.length}{' '}
+							{visible.length === 1 ? 'result' : 'results'} for{' '}
+							<span className="text-zinc-300">"{query}"</span>
+						</>
+					)}
 				</h1>
 				<p className="text-xs text-zinc-500 mt-0.5">
-					{sort === "match"
-						? "Ranked by hybrid keyword + semantic relevance"
-						: `Showing ${visible.length} of ${results.length} sorted by ${sort}`}
+					{title
+						? `Live query: "${query}"${tag ? ` · tag: ${tag}` : ''}`
+						: sort === 'match'
+							? 'Ranked by hybrid keyword + semantic relevance'
+							: `Showing ${visible.length} of ${results.length} sorted by ${sort}`}
 				</p>
 			</header>
 			<div className="mb-4 flex flex-wrap items-center gap-2">
@@ -538,9 +763,14 @@ function SearchResults({
 				</Select>
 				<Select value={sort} onChange={(v) => setSort(v as SearchSort)}>
 					<option value="match">Sort: Match</option>
-					<option value="rating">Sort: Highest rated</option>
-					<option value="popularity">Sort: Most popular</option>
-					<option value="playtime">Sort: Most played</option>
+					<option value="rating">Sort: Highest rated (% positive)</option>
+					<option value="popularity">Sort: Most positive reviews</option>
+					<option value="reviews">Sort: Most total reviews</option>
+					<option value="metacritic">Sort: Metacritic</option>
+					<option value="controversial">Sort: Most controversial</option>
+					<option value="hidden_gems">Sort: Hidden gems</option>
+					<option value="hltb_short">Sort: Shortest main story</option>
+					<option value="playtime">Sort: Most played by you</option>
 					<option value="year">Sort: Newest first</option>
 					<option value="name">Sort: A–Z</option>
 				</Select>
@@ -550,11 +780,49 @@ function SearchResults({
 	);
 }
 
-function ratingPct(g: { positive: number | null; negative: number | null }): number | null {
+function ratingPct(g: {
+	positive: number | null;
+	negative: number | null;
+}): number | null {
 	if (g.positive === null) return null;
 	const total = g.positive + (g.negative ?? 0);
 	if (total === 0) return null;
 	return Math.round((g.positive / total) * 100);
+}
+
+/**
+ * Controversial: weights total review volume by how close the positive
+ * ratio is to 50%. A 50/50 split with 50k reviews scores way higher than
+ * a 50/50 split with 10 reviews. Games with <100 reviews are floored to
+ * keep noise out of the top ranks.
+ */
+function controversialScore(g: LibraryGame): number {
+	const pos = g.positive ?? 0;
+	const neg = g.negative ?? 0;
+	const total = pos + neg;
+	if (total < 100) return -1;
+	const ratio = pos / total;
+	const distFrom50 = Math.abs(0.5 - ratio); // 0..0.5
+	const closeness = 1 - distFrom50 * 2; // 1 at 50/50, 0 at 100/0
+	return total * closeness;
+}
+
+/**
+ * Hidden gems: high % positive, modest review count. We compute
+ * `pct * (1 - sigmoid(reviews))` so a 95%-rated game with 500 reviews
+ * outranks a 95%-rated game with 500k. Games with <30 reviews are
+ * filtered (too noisy to call a gem).
+ */
+function hiddenGemScore(g: LibraryGame): number {
+	const pos = g.positive ?? 0;
+	const neg = g.negative ?? 0;
+	const total = pos + neg;
+	if (total < 30) return -1;
+	const pct = pos / total;
+	if (pct < 0.8) return -1;
+	// Damping: roughly halves the score by ~5k reviews, near-zero at 100k+.
+	const damp = 1 / (1 + Math.log10(total / 100));
+	return pct * 100 * damp;
 }
 
 function ListView({
@@ -566,9 +834,9 @@ function ListView({
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
-	const [list, setList] = useState<(ListSummary & { games: LibraryGame[] }) | null>(
-		null,
-	);
+	const [list, setList] = useState<
+		(ListSummary & { games: LibraryGame[] }) | null
+	>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -580,11 +848,23 @@ function ListView({
 			.listGames(slug, ctrl.signal)
 			.then(setList)
 			.catch((e) => {
-				if (e.name !== "AbortError") setError(e.message);
+				if (e.name !== 'AbortError') setError(e.message);
 			})
 			.finally(() => setLoading(false));
 		return () => ctrl.abort();
 	}, [slug]);
+
+	async function removeFromList(appid: number) {
+		if (!list) return;
+		try {
+			await api.removeFromList(list.slug, appid);
+			// Optimistic local update so the card disappears immediately.
+			setList({ ...list, games: list.games.filter((g) => g.appid !== appid) });
+			notifyListsChanged();
+		} catch (e) {
+			console.error('remove from list failed:', e);
+		}
+	}
 
 	if (loading && !list)
 		return <div className="text-zinc-500 text-sm">Loading…</div>;
@@ -599,7 +879,7 @@ function ListView({
 					{list.name}
 				</h1>
 				<p className="text-xs text-zinc-500">
-					{list.games.length} {list.games.length === 1 ? "game" : "games"}
+					{list.games.length} {list.games.length === 1 ? 'game' : 'games'}
 				</p>
 			</header>
 			{list.games.length === 0 ? (
@@ -607,101 +887,60 @@ function ListView({
 					Nothing here yet. Open a game and add it from the detail panel.
 				</div>
 			) : (
-				<GameGrid games={list.games} installed={installed} onSelect={onSelect} />
+				<GameGrid
+					games={list.games}
+					installed={installed}
+					onSelect={onSelect}
+					cardContextMenu={(g) => [
+						{
+							label: `Remove "${g.name}" from "${list.name}"`,
+							onClick: () => removeFromList(g.appid),
+							danger: true,
+						},
+					]}
+				/>
 			)}
 		</div>
 	);
 }
 
-function GameGrid({
-	games,
+function SavedSearchView({
+	slug,
 	installed,
 	onSelect,
 }: {
-	games: LibraryGame[];
+	slug: string;
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
-	return (
-		<div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
-			{games.map((g) => (
-				<GameCard
-					key={g.appid}
-					game={g}
-					installed={installed}
-					onSelect={() => onSelect(g.appid)}
-				/>
-			))}
-		</div>
-	);
-}
+	const [saved, setSaved] = useState<SavedSearchSummary | null>(null);
+	const [error, setError] = useState<string | null>(null);
 
-function GameCard({
-	game,
-	installed,
-	onSelect,
-}: {
-	game: LibraryGame;
-	installed: InstalledIndex | null;
-	onSelect: () => void;
-}) {
-	const isInstalledHere =
-		installed !== null && installed.steam.includes(game.appid);
-	const positivePct =
-		game.positive && game.negative !== null
-			? Math.round((game.positive / (game.positive + (game.negative ?? 0))) * 100)
-			: null;
-	const releaseYear =
-		game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
-	const matchPct =
-		game.score !== undefined && game.score !== null
-			? Math.round(game.score * 100)
-			: null;
+	useEffect(() => {
+		const ctrl = new AbortController();
+		setSaved(null);
+		setError(null);
+		api
+			.getSavedSearch(slug, ctrl.signal)
+			.then(setSaved)
+			.catch((e) => {
+				if (e.name !== 'AbortError') setError(e.message);
+			});
+		return () => ctrl.abort();
+	}, [slug]);
+
+	if (error) return <div className="text-red-400 text-sm">{error}</div>;
+	if (!saved) return <div className="text-zinc-500 text-sm">Loading…</div>;
+
 	return (
-		<button
-			type="button"
-			onClick={onSelect}
-			className="group text-left rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 bg-zinc-900 transition-all"
-		>
-			<div className="relative">
-				<GameImage
-					appid={game.appid}
-					name={game.name}
-					variant="library_capsule"
-					fallback={game.header_image}
-					className="w-full aspect-[2/3] object-cover bg-zinc-900 group-hover:scale-[1.02] transition-transform"
-				/>
-				{isInstalledHere && (
-					<span className="absolute top-2 left-2 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white shadow">
-						Installed
-					</span>
-				)}
-				{matchPct !== null ? (
-					<span
-						className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-emerald-700/90 border border-emerald-600 text-white font-medium"
-						title="Hybrid keyword + semantic-vector relevance score"
-					>
-						{matchPct}% match
-					</span>
-				) : releaseYear ? (
-					<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
-						{releaseYear}
-					</span>
-				) : null}
-			</div>
-			<div className="p-2.5">
-				<div className="text-xs font-medium text-zinc-100 line-clamp-2 leading-tight min-h-[2.25rem]">
-					{game.name}
-				</div>
-				<div className="mt-1.5 flex items-center gap-2 text-[10px] text-zinc-500 tabular-nums flex-wrap">
-					{game.hltb_main !== null && <span>{game.hltb_main}h main</span>}
-					{positivePct !== null && <span>{positivePct}% positive</span>}
-					{game.playtime_min > 0 && (
-						<span>{Math.round(game.playtime_min / 60)}h played</span>
-					)}
-				</div>
-			</div>
-		</button>
+		<SearchResults
+			query={saved.query}
+			installed={installed}
+			onSelect={onSelect}
+			initialTag={saved.tag_filter ?? undefined}
+			initialSort={(saved.sort_order as SearchSort | null) ?? undefined}
+			title={saved.name}
+		/>
 	);
 }
 

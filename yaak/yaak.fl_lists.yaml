@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_lists
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: User-defined lists (Play next + custom playlists). Each list has a slug; games are added/removed by appid.
+headers: []
+name: Lists
+sortPriority: 6.0

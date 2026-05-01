@@ -32,18 +32,54 @@ export function listsRoutes(raw: postgres.Sql) {
 			name?: string;
 			emoji?: string;
 			slug?: string;
+			/** If set, populate the new list with all games matching the search. */
+			from_search?: { q: string; tag?: string };
 		};
 		if (!body.name || body.name.trim().length === 0) {
 			return c.json({ error: 'name required' }, 400);
 		}
 		const slug = body.slug?.trim() || slugify(body.name);
 		try {
-			const [row] = await raw`
+			const [list] = await raw`
 				INSERT INTO lists (slug, name, emoji, is_system)
 				VALUES (${slug}, ${body.name.trim()}, ${body.emoji ?? null}, FALSE)
 				RETURNING id, slug, name, emoji, is_system, created_at
 			`;
-			return c.json(row, 201);
+
+			// Optional: bulk-fill from a live search. Same FTS-only filter as the
+			// saved-search count — vector ordering doesn't change membership.
+			if (body.from_search?.q) {
+				const conds = [
+					raw`g.search @@ websearch_to_tsquery('english', ${body.from_search.q})`,
+				];
+				if (body.from_search.tag) {
+					conds.push(
+						raw`g.appid IN (SELECT appid FROM game_tags WHERE tag ILIKE ${`%${body.from_search.tag}%`})`,
+					);
+				}
+				const where = conds.reduce((acc, cond, i) =>
+					i === 0 ? cond : raw`${acc} AND ${cond}`,
+				);
+				const matches = (await raw`
+					SELECT g.appid FROM games g WHERE ${where} LIMIT 5000
+				`) as unknown as { appid: number }[];
+				if (matches.length > 0) {
+					const rows = matches.map((m) => ({
+						list_id: (list as { id: number }).id,
+						appid: m.appid,
+					}));
+					await raw`
+						INSERT INTO list_games ${raw(rows, 'list_id', 'appid')}
+						ON CONFLICT (list_id, appid) DO NOTHING
+					`;
+				}
+				return c.json(
+					{ ...(list as object), games_added: matches.length },
+					201,
+				);
+			}
+
+			return c.json(list, 201);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'unknown';
 			if (msg.includes('lists_slug_key')) {

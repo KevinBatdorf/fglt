@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_admin
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: Admin / pipeline endpoints — sync owned games, force enrichment / embedding, inspect activity, manage hidden genres.
+headers: []
+name: Admin
+sortPriority: 7.0

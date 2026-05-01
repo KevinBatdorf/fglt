@@ -8,22 +8,59 @@
  *      simple — disks are fast and the user can re-trigger from the UI)
  *   3. refreshGame — proxy through to the API's /games/:appid/refresh
  */
-import { BrowserView, Utils } from "electrobun/bun";
+import { BrowserView, type BrowserWindow, Utils } from 'electrobun/bun';
 import type {
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
 	SegRPC,
-} from "../shared/types";
-import { epicLaunchUri, getEpicInstalled } from "./launchers/epic";
-import { getGogInstalled, gogLaunchUri } from "./launchers/gog";
+} from '../shared/types';
+import { epicLaunchUri, getEpicInstalled } from './launchers/epic';
+import { getGogInstalled, gogLaunchUri } from './launchers/gog';
 import {
 	getSteamInstalled,
 	steamInstallUri,
 	steamLaunchUri,
-} from "./launchers/steam";
+} from './launchers/steam';
 
-const API_BASE = process.env.SEG_API_BASE ?? "http://localhost:3110";
+function mainWindow() {
+	// We only ever create one window. BrowserWindowMap isn't exported,
+	// so we cache the first instance we see.
+	return (globalThis as unknown as { __segMainWindow?: BrowserWindow })
+		.__segMainWindow;
+}
+
+export function registerMainWindow(win: BrowserWindow): void {
+	(
+		globalThis as unknown as { __segMainWindow?: BrowserWindow }
+	).__segMainWindow = win;
+}
+
+// Path to the window-frame prefs file. Wired from index.ts at startup.
+let prefsPath: string | null = null;
+let prefsTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function setPrefsPath(path: string): void {
+	prefsPath = path;
+}
+
+// Debounce frame writes — drag/resize fires per-RAF, no need to hammer disk.
+function schedulePersistFrame() {
+	if (!prefsPath) return;
+	if (prefsTimer !== null) clearTimeout(prefsTimer);
+	prefsTimer = setTimeout(() => {
+		const w = mainWindow();
+		if (!w || !prefsPath) return;
+		try {
+			const f = w.getFrame();
+			void Bun.write(prefsPath, JSON.stringify(f));
+		} catch (e) {
+			console.warn('window prefs write failed:', e);
+		}
+	}, 250);
+}
+
+const API_BASE = process.env.SEG_API_BASE ?? 'http://localhost:3110';
 
 function readInstalledIndex(): InstalledIndex {
 	return {
@@ -40,13 +77,13 @@ export function defineSegRpc() {
 				launch: ({ platform, externalId, appid }): LaunchResult => {
 					let uri: string;
 					switch (platform) {
-						case "steam":
+						case 'steam':
 							uri = steamLaunchUri(appid);
 							break;
-						case "epic":
+						case 'epic':
 							uri = epicLaunchUri(externalId);
 							break;
-						case "gog":
+						case 'gog':
 							uri = gogLaunchUri(externalId);
 							break;
 						default:
@@ -54,7 +91,12 @@ export function defineSegRpc() {
 					}
 					try {
 						const ok = Utils.openExternal(uri);
-						return { ok, ...(ok ? {} : { error: `openExternal returned false for ${uri}` }) };
+						return {
+							ok,
+							...(ok
+								? {}
+								: { error: `openExternal returned false for ${uri}` }),
+						};
 					} catch (e) {
 						return {
 							ok: false,
@@ -65,9 +107,10 @@ export function defineSegRpc() {
 
 				getInstalledIndex: (): InstalledIndex => readInstalledIndex(),
 
-				refreshGame: async ({ appid }): Promise<RefreshResult> => {
-					const res = await fetch(`${API_BASE}/games/${appid}/refresh`, {
-						method: "POST",
+				refreshGame: async ({ appid, source }): Promise<RefreshResult> => {
+					const qs = source && source !== 'all' ? `?source=${source}` : '';
+					const res = await fetch(`${API_BASE}/games/${appid}/refresh${qs}`, {
+						method: 'POST',
 					});
 					if (!res.ok) {
 						throw new Error(`API ${res.status}: ${await res.text()}`);
@@ -78,6 +121,65 @@ export function defineSegRpc() {
 				openUrl: ({ url }): { ok: boolean } => {
 					try {
 						return { ok: Utils.openExternal(url) };
+					} catch {
+						return { ok: false };
+					}
+				},
+
+				windowAction: ({ action }) => {
+					const w = mainWindow();
+					if (!w) return { isMaximized: false };
+					try {
+						if (action === 'minimize') w.minimize();
+						else if (action === 'maximize') w.maximize();
+						else if (action === 'unmaximize') w.unmaximize();
+						else if (action === 'close') w.close();
+						else if (action === 'toggleMax') {
+							if (w.isMaximized()) w.unmaximize();
+							else w.maximize();
+						}
+						// Don't persist on maximize/restore — keep the
+						// "natural" un-maximized frame as the saved one.
+						return { isMaximized: w.isMaximized() };
+					} catch (e) {
+						console.warn('windowAction failed', action, e);
+						return { isMaximized: false };
+					}
+				},
+
+				windowGetFrame: () => {
+					const w = mainWindow();
+					if (!w) return { x: 0, y: 0, width: 0, height: 0 };
+					return w.getFrame();
+				},
+
+				windowSetPosition: ({ x, y }) => {
+					const w = mainWindow();
+					if (!w) return { ok: false };
+					w.setPosition(Math.round(x), Math.round(y));
+					schedulePersistFrame();
+					return { ok: true };
+				},
+
+				windowSetFrame: ({ x, y, width, height }) => {
+					const w = mainWindow();
+					if (!w) return { ok: false };
+					w.setFrame(
+						Math.round(x),
+						Math.round(y),
+						Math.round(width),
+						Math.round(height),
+					);
+					schedulePersistFrame();
+					return { ok: true };
+				},
+
+				windowSetTitle: ({ title }) => {
+					const w = mainWindow();
+					if (!w) return { ok: false };
+					try {
+						w.setTitle(title);
+						return { ok: true };
 					} catch {
 						return { ok: false };
 					}

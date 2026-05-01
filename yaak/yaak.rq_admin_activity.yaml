@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_admin_activity
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_admin
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Pipeline activity dashboard data — what got added/enriched/embedded/video-fetched over the last 24h and 7d, plus the most recent rows from each source.
+headers: []
+method: GET
+name: 'Activity: pipeline'
+sortPriority: 5.0
+url: ${[ baseUrl ]}/activity
+urlParameters: []

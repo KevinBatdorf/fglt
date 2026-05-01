@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_admin_embed
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_admin
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Generate embeddings for enriched-but-unembedded games via the configured AI provider.
+headers: []
+method: POST
+name: 'Embed: batch'
+sortPriority: 4.0
+url: ${[ baseUrl ]}/embed
+urlParameters: []

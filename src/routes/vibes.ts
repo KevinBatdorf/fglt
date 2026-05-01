@@ -99,7 +99,7 @@ const STATIC_DEFAULTS: Vibe[] = [
 
 const CACHE_KEY = 'vibes_cache';
 const CACHE_TTL_HOURS = 24;
-const CHIP_COUNT = 16;
+const CHIP_COUNT = 12;
 
 interface CachedVibes {
 	vibes: Vibe[];
@@ -211,7 +211,8 @@ Use that lens to invent ${CHIP_COUNT} fresh, specific, surprising vibes. Output 
 
 RULES:
 - label: 2-4 words, sentence case. NEVER a genre name. NEVER generic ("Action", "Adventure", "Indie", "RPG").
-- query: 4-8 lowercase words, used for hybrid keyword+vector search. Should match real games via tags/descriptions.
+- query: 4-8 lowercase words, used for hybrid keyword+vector search. Must MATCH the label's meaning — if the label is about art style, the query MUST contain visual-style nouns (e.g. "pixel art", "hand-drawn", "low-poly"); if it's about session shape, the query MUST contain pacing words (e.g. "short run", "one-sitting"); if it's about mood, the query MUST contain mood-adjacent tags ("melancholy", "atmospheric", "tense"). NEVER let the query drift to an unrelated topic just because it's a popular tag in the library.
+- query word choice: prefer SPECIFIC tag-like nouns ("metroidvania", "roguelite deckbuilder", "doom-clone") over filler adjectives. AVOID these filler words: hours, endless, deep, rich, immersive, detailed, invested, beautiful, amazing, epic.
 - emoji: ONE emoji that fits.
 - Be SPECIFIC and weird. "3am dungeon" beats "Dungeon crawling". "Soft sadness" beats "Sad games".
 - Each label must be DIFFERENT in tone/topic from the others — mix textures.

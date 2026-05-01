@@ -4,8 +4,10 @@
  * the daily quota is hit.
  *
  * Free YouTube quota = 10,000 units/day, search.list = 100 units = ~100 games/day.
- * Full library seed therefore takes ~24 days at the floor. Once seeded, future
- * tier-based rescans (TODO: needs parsed release_date) will keep new releases fresh.
+ * We cap the cron at 90 to leave 1,000 units (~10 games) for ad-hoc manual
+ * /refresh calls — otherwise the cron would burn the quota before the user
+ * has a chance to refresh anything by hand. Full library seed therefore
+ * takes ~26 days at the floor.
  */
 import { raw } from '../src/db';
 import { sleep } from '../src/lib/sleep';
@@ -16,7 +18,7 @@ import {
 	YouTubeQuotaError,
 } from '../src/lib/youtube';
 
-const BATCH = Number.parseInt(process.env.YOUTUBE_BATCH ?? '120', 10);
+const BATCH = Number.parseInt(process.env.YOUTUBE_BATCH ?? '90', 10);
 const PER_GAME = Number.parseInt(process.env.YOUTUBE_PER_GAME ?? '10', 10);
 const DELAY_MS = Number.parseInt(process.env.YOUTUBE_DELAY_MS ?? '300', 10);
 

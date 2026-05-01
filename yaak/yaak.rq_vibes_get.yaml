@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_vibes_get
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_vibes
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Get the cached vibe chips. `ai_enabled` reflects whether an AI provider is configured; static fallback chips are returned if not. `stale: true` means cache was past TTL and a background regen is in flight.'
+headers: []
+method: GET
+name: 'Vibes: list'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/vibes
+urlParameters: []

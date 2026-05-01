@@ -4,10 +4,19 @@
  * Kept thin — every function returns the unwrapped JSON. Errors throw with
  * the API's status code so the caller can decide UX.
  */
-import type { Platform } from "../../shared/types";
+import type { Platform, RefreshResult, RefreshSource } from '../../shared/types';
 
 export const API_BASE =
-	import.meta.env?.VITE_API_BASE ?? "http://localhost:3110";
+	import.meta.env?.VITE_API_BASE ?? 'http://localhost:3110';
+
+/**
+ * Cross-component event bus for "lists changed" — anyone who mutates list
+ * membership (add/remove/create/delete from any view) calls this so the
+ * Sidebar (and anything else interested) refetches counts.
+ */
+export function notifyListsChanged(): void {
+	window.dispatchEvent(new CustomEvent('seg:lists:changed'));
+}
 
 export interface Stats {
 	total: number;
@@ -40,6 +49,7 @@ export interface LibraryGame {
 	hltb_extra: number | null;
 	metacritic: number | null;
 	platforms: Platform[];
+	created_at: string | null;
 	/** Hybrid keyword+vector relevance, 0..1. Only present on /library?q= results. */
 	score?: number | null;
 }
@@ -49,7 +59,7 @@ export interface LibraryResponse {
 	offset: number;
 	results: LibraryGame[];
 	q?: string;
-	mode?: "hybrid" | "fts";
+	mode?: 'hybrid' | 'fts';
 }
 
 export interface Tag {
@@ -62,6 +72,7 @@ export interface SimilarRow {
 	rank: number;
 	name: string | null;
 	header_image: string | null;
+	platforms: Platform[];
 }
 
 export interface OwnershipRow {
@@ -94,6 +105,22 @@ export interface ListSummary {
 	created_at?: string;
 }
 
+export interface SavedSearchSummary {
+	id: number;
+	slug: string;
+	name: string;
+	emoji: string | null;
+	query: string;
+	tag_filter: string | null;
+	sort_order: string | null;
+	count?: number;
+	created_at?: string;
+}
+
+export function notifySavedSearchesChanged(): void {
+	window.dispatchEvent(new CustomEvent('seg:saved-searches:changed'));
+}
+
 export interface ListEntry {
 	id: number;
 	slug: string;
@@ -104,6 +131,36 @@ export interface ListEntry {
 	added_at: string;
 }
 
+export interface Screenshot {
+	id: number;
+	path_thumbnail: string;
+	path_full: string;
+}
+
+export interface SteamUserReview {
+	recommendation_id: number;
+	voted_up: boolean;
+	votes_up: number;
+	votes_funny: number;
+	weighted_vote_score: number | null;
+	playtime_at_review_min: number | null;
+	language: string | null;
+	review_text: string | null;
+	timestamp_created: string | null;
+	timestamp_updated: string | null;
+}
+
+export interface ExternalScore {
+	source: string;
+	score: number | null;
+	max_score: number;
+	tier: string | null;
+	url: string | null;
+	percent_recommended: number | null;
+	num_reviews: number | null;
+	fetched_at: string;
+}
+
 export interface GameDetail extends LibraryGame {
 	about: string | null;
 	detailed_desc: string | null;
@@ -112,11 +169,25 @@ export interface GameDetail extends LibraryGame {
 	hltb_complete: number | null;
 	avg_playtime: number | null;
 	median_playtime: number | null;
+	metacritic_url: string | null;
+	controller: 'full' | 'partial' | null;
+	website: string | null;
+	price_cents: number | null;
+	currency: string | null;
+	os_support: { windows: boolean; mac: boolean; linux: boolean } | null;
+	screenshots: Screenshot[];
 	tags: Tag[];
 	similar: SimilarRow[];
 	ownership: OwnershipRow[];
 	videos: Video[];
 	lists: ListEntry[];
+	reviews: SteamUserReview[];
+	external_scores: ExternalScore[];
+	enriched_at: string | null;
+	screenshots_fetched_at: string | null;
+	steam_reviews_fetched_at: string | null;
+	opencritic_fetched_at: string | null;
+	youtube_fetched_at: string | null;
 }
 
 export interface CurateSeed {
@@ -143,8 +214,18 @@ export interface ActivityResponse {
 		enriched_7d: number;
 		videos_fetched_7d: number;
 	};
-	recent_added: { appid: number; name: string; header_image: string | null; created_at: string }[];
-	recent_enriched: { appid: number; name: string; header_image: string | null; enriched_at: string }[];
+	recent_added: {
+		appid: number;
+		name: string;
+		header_image: string | null;
+		created_at: string;
+	}[];
+	recent_enriched: {
+		appid: number;
+		name: string;
+		header_image: string | null;
+		enriched_at: string;
+	}[];
 	recent_videos: {
 		appid: number;
 		name: string;
@@ -165,7 +246,7 @@ export interface ActivityResponse {
 export interface VibesResponse {
 	vibes: VibeChip[];
 	generated_at: string;
-	source: "static" | "llm";
+	source: 'static' | 'llm';
 	ai_enabled: boolean;
 	stale?: boolean;
 }
@@ -190,12 +271,13 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 async function jsonCall<T>(
 	path: string,
-	method: "POST" | "DELETE",
+	method: 'POST' | 'DELETE',
 	body?: unknown,
 ): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
 		method,
-		headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+		headers:
+			body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
 		body: body !== undefined ? JSON.stringify(body) : undefined,
 	});
 	if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
@@ -209,14 +291,14 @@ export interface SimilarResponse {
 }
 
 export const api = {
-	stats: (signal?: AbortSignal) => get<Stats>("/stats", signal),
+	stats: (signal?: AbortSignal) => get<Stats>('/stats', signal),
 	library: (
 		params: Record<string, string | number | undefined>,
 		signal?: AbortSignal,
 	) => {
 		const url = new URL(`${API_BASE}/library`);
 		for (const [k, v] of Object.entries(params)) {
-			if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+			if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
 		}
 		return get<LibraryResponse>(url.pathname + url.search, signal);
 	},
@@ -228,39 +310,72 @@ export const api = {
 	) => {
 		const url = new URL(`${API_BASE}/similar`);
 		for (const [k, v] of Object.entries(params)) {
-			if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+			if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
 		}
 		return get<SimilarResponse>(url.pathname + url.search, signal);
 	},
-	curate: (signal?: AbortSignal) =>
-		get<CurateResponse>("/curate", signal),
+	curate: (signal?: AbortSignal) => get<CurateResponse>('/curate', signal),
 	tags: (signal?: AbortSignal) =>
 		get<{ tags: { tag: string; total_votes: number; games: number }[] }>(
-			"/tags",
+			'/tags',
 			signal,
 		),
-	vibes: (signal?: AbortSignal) => get<VibesResponse>("/vibes", signal),
-	regenerateVibes: () => jsonCall<VibesResponse>("/vibes/regenerate", "POST"),
+	vibes: (signal?: AbortSignal) => get<VibesResponse>('/vibes', signal),
+	regenerateVibes: () => jsonCall<VibesResponse>('/vibes/regenerate', 'POST'),
 	activity: (signal?: AbortSignal) =>
-		get<ActivityResponse>("/activity", signal),
-	syncOwned: () => jsonCall<{ ok: boolean; total: number; removed?: number }>("/sync", "POST"),
+		get<ActivityResponse>('/activity', signal),
+	syncOwned: () =>
+		jsonCall<{ ok: boolean; total: number; removed?: number }>('/sync', 'POST'),
 	lists: (signal?: AbortSignal) =>
-		get<{ lists: ListSummary[] }>("/lists", signal),
+		get<{ lists: ListSummary[] }>('/lists', signal),
 	listGames: (slug: string, signal?: AbortSignal) =>
 		get<ListSummary & { games: LibraryGame[] }>(`/lists/${slug}`, signal),
 	createList: (name: string, emoji?: string) =>
-		jsonCall<ListSummary>("/lists", "POST", { name, emoji }),
+		jsonCall<ListSummary>('/lists', 'POST', { name, emoji }),
+	createListFromSearch: (name: string, q: string, tag?: string) =>
+		jsonCall<ListSummary & { games_added: number }>('/lists', 'POST', {
+			name,
+			from_search: { q, tag },
+		}),
+	deleteList: (listRef: string | number) =>
+		jsonCall<{ ok: boolean }>(`/lists/${listRef}`, 'DELETE'),
+	savedSearches: (signal?: AbortSignal) =>
+		get<{ saved_searches: SavedSearchSummary[] }>('/saved_searches', signal),
+	getSavedSearch: (ref: string | number, signal?: AbortSignal) =>
+		get<SavedSearchSummary>(`/saved_searches/${ref}`, signal),
+	createSavedSearch: (input: {
+		name: string;
+		query: string;
+		tag_filter?: string;
+		sort_order?: string;
+		emoji?: string;
+	}) => jsonCall<SavedSearchSummary>('/saved_searches', 'POST', input),
+	deleteSavedSearch: (ref: string | number) =>
+		jsonCall<{ ok: boolean }>(`/saved_searches/${ref}`, 'DELETE'),
+	/**
+	 * Direct call to /games/:appid/refresh — used by the per-section
+	 * "Fetch now" buttons. Bypasses Electrobun RPC because that adds a
+	 * timeout we can't easily extend, and the webview can reach the API
+	 * server directly via the existing CORS config.
+	 */
+	refreshGame: (appid: number, source: RefreshSource = 'all') => {
+		const qs = source !== 'all' ? `?source=${source}` : '';
+		return jsonCall<RefreshResult>(
+			`/games/${appid}/refresh${qs}`,
+			'POST',
+		);
+	},
 	addToList: (listRef: string | number, appid: number, note?: string) =>
-		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, "POST", { note }),
+		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, 'POST', { note }),
 	removeFromList: (listRef: string | number, appid: number) =>
-		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, "DELETE"),
+		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, 'DELETE'),
 	random: (
 		params: Record<string, string | number | undefined>,
 		signal?: AbortSignal,
 	) => {
 		const url = new URL(`${API_BASE}/random`);
 		for (const [k, v] of Object.entries(params)) {
-			if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+			if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
 		}
 		return get<{ appid: number; name: string }>(
 			url.pathname + url.search,
@@ -268,15 +383,13 @@ export const api = {
 		);
 	},
 	hiddenGenres: (signal?: AbortSignal) =>
-		get<{ hidden_genres: string[] }>("/settings/hidden-genres", signal),
+		get<{ hidden_genres: string[] }>('/settings/hidden-genres', signal),
 	setHiddenGenres: (list: string[]) =>
-		jsonCall<{ hidden_genres: string[] }>(
-			"/settings/hidden-genres",
-			"POST",
-			{ hidden_genres: list },
-		),
+		jsonCall<{ hidden_genres: string[] }>('/settings/hidden-genres', 'POST', {
+			hidden_genres: list,
+		}),
 	genres: (signal?: AbortSignal) =>
-		get<{ genres: { name: string; games: number }[] }>("/genres", signal),
+		get<{ genres: { name: string; games: number }[] }>('/genres', signal),
 };
 
 /**
@@ -289,24 +402,25 @@ export const api = {
  *   page_bg       — page background photo
  */
 export type SteamImageVariant =
-	| "header"
-	| "library_hero"
-	| "library_capsule"
-	| "library_logo"
-	| "page_bg";
+	| 'header'
+	| 'library_hero'
+	| 'library_capsule'
+	| 'library_logo'
+	| 'page_bg';
 
 export function steamImg(appid: number, variant: SteamImageVariant): string {
-	const base = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps";
+	const base =
+		'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps';
 	switch (variant) {
-		case "header":
+		case 'header':
 			return `${base}/${appid}/header.jpg`;
-		case "library_hero":
+		case 'library_hero':
 			return `${base}/${appid}/library_hero.jpg`;
-		case "library_capsule":
+		case 'library_capsule':
 			return `${base}/${appid}/library_600x900.jpg`;
-		case "library_logo":
+		case 'library_logo':
 			return `${base}/${appid}/logo.png`;
-		case "page_bg":
+		case 'page_bg':
 			return `${base}/${appid}/page.bg.jpg`;
 	}
 }

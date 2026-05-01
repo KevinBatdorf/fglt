@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_admin_tags
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_admin
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: All SteamSpy tags present in the library, with the count of games each one covers. Used by the search-page tag dropdown.
+headers: []
+method: GET
+name: 'Tags: index'
+sortPriority: 6.0
+url: ${[ baseUrl ]}/tags
+urlParameters: []

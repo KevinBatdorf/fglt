@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_admin_hidden_set
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_admin
+authentication: {}
+authenticationType: null
+body:
+  text: |
+    {"genres": ["Sexual Content", "Nudity"]}
+bodyType: application/json
+description: Replace the hidden-genres set. Pass the full desired list (not a delta).
+headers:
+  - name: Content-Type
+    value: application/json
+method: POST
+name: 'Settings: set hidden genres'
+sortPriority: 9.0
+url: ${[ baseUrl ]}/settings/hidden-genres
+urlParameters: []

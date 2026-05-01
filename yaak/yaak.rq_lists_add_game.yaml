@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_lists_add_game
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_lists
+authentication: {}
+authenticationType: null
+body:
+  text: |
+    {"note": "queue for next weekend"}
+bodyType: application/json
+description: Add a game to a list. Optional `note` lets you stash context.
+headers:
+  - name: Content-Type
+    value: application/json
+method: POST
+name: 'Lists: add Hades to Play next'
+sortPriority: 4.0
+url: ${[ baseUrl ]}/lists/play_next/games/1145360
+urlParameters: []

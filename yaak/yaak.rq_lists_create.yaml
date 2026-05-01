@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_lists_create
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_lists
+authentication: {}
+authenticationType: null
+body:
+  text: |
+    {"name": "Weekend roguelikes", "emoji": "🎲"}
+bodyType: application/json
+description: Create a new user list. Slug is derived from the name.
+headers:
+  - name: Content-Type
+    value: application/json
+method: POST
+name: 'Lists: create'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/lists
+urlParameters: []

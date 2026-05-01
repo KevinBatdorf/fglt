@@ -12,19 +12,22 @@
  * The two sets are unioned. Missing files / parse errors fail soft to an
  * empty contribution.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 
 const LEGENDARY_PATHS = [`${homedir()}/.config/legendary/installed.json`];
 const EGL_MANIFEST_DIRS = [
-	"C:/ProgramData/Epic/EpicGamesLauncher/Data/Manifests",
+	'C:/ProgramData/Epic/EpicGamesLauncher/Data/Manifests',
 ];
 
 function readLegendary(): Set<string> {
 	for (const path of LEGENDARY_PATHS) {
 		if (!existsSync(path)) continue;
 		try {
-			const json = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+			const json = JSON.parse(readFileSync(path, 'utf8')) as Record<
+				string,
+				unknown
+			>;
 			return new Set(Object.keys(json));
 		} catch (e) {
 			console.error(`[epic-launcher] failed to read ${path}:`, e);
@@ -45,9 +48,9 @@ function readEgl(): Set<string> {
 			continue;
 		}
 		for (const name of entries) {
-			if (!name.endsWith(".item")) continue;
+			if (!name.endsWith('.item')) continue;
 			try {
-				const raw = readFileSync(`${dir}/${name}`, "utf8");
+				const raw = readFileSync(`${dir}/${name}`, 'utf8');
 				const data = JSON.parse(raw) as { AppName?: string };
 				if (data.AppName) result.add(data.AppName);
 			} catch {

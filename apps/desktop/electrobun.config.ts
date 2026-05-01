@@ -1,19 +1,19 @@
-import type { ElectrobunConfig } from "electrobun";
+import type { ElectrobunConfig } from 'electrobun';
 
 export default {
 	app: {
-		name: "SEG",
-		identifier: "seg.kbatdorf.dev",
-		version: "0.1.0",
+		name: 'SEG',
+		identifier: 'seg.kbatdorf.dev',
+		version: '0.1.0',
 	},
 	build: {
 		// Vite builds to dist/, we copy from there
 		copy: {
-			"dist/index.html": "views/mainview/index.html",
-			"dist/assets": "views/mainview/assets",
+			'dist/index.html': 'views/mainview/index.html',
+			'dist/assets': 'views/mainview/assets',
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
-		watchIgnore: ["dist/**"],
+		watchIgnore: ['dist/**'],
 		mac: {
 			bundleCEF: false,
 		},

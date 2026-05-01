@@ -80,6 +80,11 @@ export interface AppDetails {
 	metacritic?: { score?: number; url?: string };
 	controller_support?: string;
 	price_overview?: { final?: number; currency?: string };
+	screenshots?: Array<{
+		id: number;
+		path_thumbnail: string;
+		path_full: string;
+	}>;
 }
 
 /** Strip HTML tags from Steam description fields. */

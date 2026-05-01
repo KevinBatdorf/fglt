@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_lists_delete
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_lists
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Delete a user list (system lists like Play next are protected).
+headers: []
+method: DELETE
+name: 'Lists: delete'
+sortPriority: 6.0
+url: ${[ baseUrl ]}/lists/weekend_roguelikes
+urlParameters: []

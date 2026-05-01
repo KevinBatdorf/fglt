@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_vibes_regen
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_vibes
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Force a synchronous regen and return the new chips. Calls the configured AI provider; can take a few seconds with local Ollama.
+headers: []
+method: POST
+name: 'Vibes: regenerate'
+sortPriority: 2.0
+url: ${[ baseUrl ]}/vibes/regenerate
+urlParameters: []

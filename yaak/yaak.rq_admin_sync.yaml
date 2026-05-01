@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_admin_sync
+createdAt: 2026-04-30T00:00:00
+updatedAt: 2026-04-30T00:00:00
+workspaceId: ws_steam
+folderId: fl_admin
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Force re-sync of the owned-games list from the Steam Web API. Same path the daily syncer cron runs.
+headers: []
+method: POST
+name: 'Sync: owned games (Steam)'
+sortPriority: 1.0
+url: ${[ baseUrl ]}/sync
+urlParameters: []
