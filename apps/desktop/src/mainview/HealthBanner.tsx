@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { UpdaterStatus } from '../shared/types';
 import { api, type HealthStatus } from './lib/api';
 import { rpc } from './lib/rpc';
 
@@ -28,11 +29,13 @@ type BannerState =
 	| { kind: 'db_down'; health: HealthStatus }
 	| { kind: 'missing_steam_key'; health: HealthStatus }
 	| { kind: 'missing_steam_id'; health: HealthStatus }
-	| { kind: 'empty_library'; health: HealthStatus };
+	| { kind: 'empty_library'; health: HealthStatus }
+	| { kind: 'update_ready'; updater: UpdaterStatus };
 
 function deriveState(
 	health: HealthStatus | null,
 	reachable: boolean,
+	updater: UpdaterStatus | null,
 ): BannerState {
 	if (!reachable) return { kind: 'unreachable' };
 	if (!health) return { kind: 'unreachable' };
@@ -41,6 +44,7 @@ function deriveState(
 		return { kind: 'missing_steam_key', health };
 	if (health.steam_id === 'missing') return { kind: 'missing_steam_id', health };
 	if (health.total_games === 0) return { kind: 'empty_library', health };
+	if (updater?.updateReady) return { kind: 'update_ready', updater };
 	return { kind: 'ok' };
 }
 
@@ -52,6 +56,7 @@ function dismissKeyFor(state: BannerState): string {
 export function HealthBanner() {
 	const [health, setHealth] = useState<HealthStatus | null>(null);
 	const [reachable, setReachable] = useState(true);
+	const [updater, setUpdater] = useState<UpdaterStatus | null>(null);
 	const [dismissed, setDismissed] = useState<string | null>(() => {
 		try {
 			return sessionStorage.getItem(DISMISS_KEY);
@@ -60,7 +65,7 @@ export function HealthBanner() {
 		}
 	});
 
-	async function poll() {
+	async function pollHealth() {
 		try {
 			const h = await api.health();
 			setHealth(h);
@@ -71,15 +76,26 @@ export function HealthBanner() {
 		}
 	}
 
+	async function pollUpdater() {
+		try {
+			const u = await rpc.request.updaterStatus({});
+			setUpdater(u);
+		} catch {
+			/* updater unavailable in browser stub */
+		}
+	}
+
 	useEffect(() => {
-		void poll();
+		void pollHealth();
+		void pollUpdater();
 		const t = setInterval(() => {
-			void poll();
+			void pollHealth();
+			void pollUpdater();
 		}, POLL_MS);
 		return () => clearInterval(t);
 	}, []);
 
-	const state = deriveState(health, reachable);
+	const state = deriveState(health, reachable, updater);
 	if (state.kind === 'ok') return null;
 	if (dismissed === dismissKeyFor(state)) return null;
 
@@ -90,7 +106,10 @@ export function HealthBanner() {
 		missing_steam_key: 'bg-amber-950/80 border-amber-800 text-amber-100',
 		missing_steam_id: 'bg-amber-950/80 border-amber-800 text-amber-100',
 		empty_library: 'bg-sky-950/80 border-sky-800 text-sky-100',
+		update_ready: 'bg-emerald-950/80 border-emerald-800 text-emerald-100',
 	};
+
+	const isUpdateReady = state.kind === 'update_ready';
 
 	return (
 		<div
@@ -99,13 +118,28 @@ export function HealthBanner() {
 			<div className="flex-1 leading-relaxed">
 				<HealthMessage state={state} />
 			</div>
-			<button
-				type="button"
-				onClick={() => void poll()}
-				className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
-			>
-				Retry
-			</button>
+			{isUpdateReady ? (
+				<button
+					type="button"
+					onClick={async () => {
+						const r = await rpc.request.updaterApply({});
+						if (!r.ok) {
+							console.warn('updater apply failed', r.error);
+						}
+					}}
+					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+				>
+					Restart now
+				</button>
+			) : (
+				<button
+					type="button"
+					onClick={() => void pollHealth()}
+					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+				>
+					Retry
+				</button>
+			)}
 			<button
 				type="button"
 				onClick={() => {
@@ -120,7 +154,7 @@ export function HealthBanner() {
 				className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
 				title="Hide for this session"
 			>
-				Dismiss
+				{isUpdateReady ? 'Later' : 'Dismiss'}
 			</button>
 		</div>
 	);
@@ -188,6 +222,15 @@ function HealthMessage({ state }: { state: BannerState }) {
 						curl -X POST http://localhost:3110/sync
 					</code>{' '}
 					to pull your library now, or wait for the daily syncer cron.
+				</>
+			);
+		case 'update_ready':
+			return (
+				<>
+					<strong>
+						Update v{state.updater.latestVersion} ready.
+					</strong>{' '}
+					Restart the app to apply.
 				</>
 			);
 		default:

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { GameImage } from './GameImage';
+import type { UpdaterStatus } from '../shared/types';
 import {
 	type ActivityResponse,
 	api,
 	type HealthStatus,
 	type Stats,
 } from './lib/api';
+import { rpc } from './lib/rpc';
 import {
 	CARDS_PER_ROW_MAX,
 	CARDS_PER_ROW_MIN,
@@ -671,37 +673,126 @@ function SystemStatusSection() {
 				];
 
 	return (
-		<section>
+		<section className="space-y-4">
+			<div>
+				<div className="flex items-baseline justify-between mb-2">
+					<h2 className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
+						System status
+					</h2>
+					<button
+						type="button"
+						onClick={() => void recheck()}
+						disabled={busy}
+						className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+					>
+						{busy ? 'Checking…' : 'Re-check'}
+					</button>
+				</div>
+				<dl className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-xs space-y-1.5">
+					{rows.map((r) => (
+						<div key={r.label} className="grid grid-cols-[140px_1fr] gap-2">
+							<dt className="text-zinc-500">{r.label}</dt>
+							<dd
+								className={
+									r.ok ? 'text-emerald-300' : 'text-amber-300'
+								}
+							>
+								<span aria-hidden className="mr-1.5">
+									{r.ok ? '✓' : '✗'}
+								</span>
+								{r.value}
+							</dd>
+						</div>
+					))}
+				</dl>
+			</div>
+			<UpdatesSubsection />
+		</section>
+	);
+}
+
+/**
+ * Settings → Updates: shows current version, last check, and lets the
+ * user force an immediate check. The actual update polling is driven by
+ * the bun side (see startUpdaterPolling in src/bun/rpc.ts).
+ */
+function UpdatesSubsection() {
+	const [u, setU] = useState<UpdaterStatus | null>(null);
+	const [busy, setBusy] = useState(false);
+
+	useEffect(() => {
+		void rpc.request.updaterStatus({}).then(setU).catch(() => setU(null));
+	}, []);
+
+	async function checkNow() {
+		setBusy(true);
+		try {
+			const next = await rpc.request.updaterCheckNow({});
+			setU(next);
+		} catch (e) {
+			console.warn('updater check failed', e);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	async function restart() {
+		const r = await rpc.request.updaterApply({});
+		if (!r.ok) console.warn('updater apply failed', r.error);
+	}
+
+	const rows: { label: string; value: string }[] = [
+		{ label: 'Current version', value: u?.currentVersion ?? '—' },
+		{
+			label: 'Last check',
+			value: u?.lastChecked ? new Date(u.lastChecked).toLocaleString() : 'Never',
+		},
+		{
+			label: 'Status',
+			value: u?.updateReady
+				? `Update v${u.latestVersion ?? '?'} ready — restart to apply`
+				: u?.updateAvailable
+					? `Downloading v${u.latestVersion ?? '?'}…`
+					: u?.lastError
+						? `Error: ${u.lastError}`
+						: 'Up to date',
+		},
+	];
+
+	return (
+		<div>
 			<div className="flex items-baseline justify-between mb-2">
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
-					System status
+					Updates
 				</h2>
-				<button
-					type="button"
-					onClick={() => void recheck()}
-					disabled={busy}
-					className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
-				>
-					{busy ? 'Checking…' : 'Re-check'}
-				</button>
+				<div className="flex items-center gap-3">
+					{u?.updateReady && (
+						<button
+							type="button"
+							onClick={() => void restart()}
+							className="text-xs text-emerald-400 hover:text-emerald-300"
+						>
+							Restart to apply
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={() => void checkNow()}
+						disabled={busy}
+						className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+					>
+						{busy ? 'Checking…' : 'Check now'}
+					</button>
+				</div>
 			</div>
 			<dl className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-xs space-y-1.5">
 				{rows.map((r) => (
 					<div key={r.label} className="grid grid-cols-[140px_1fr] gap-2">
 						<dt className="text-zinc-500">{r.label}</dt>
-						<dd
-							className={
-								r.ok ? 'text-emerald-300' : 'text-amber-300'
-							}
-						>
-							<span aria-hidden className="mr-1.5">
-								{r.ok ? '✓' : '✗'}
-							</span>
-							{r.value}
-						</dd>
+						<dd className="text-zinc-200 break-words">{r.value}</dd>
 					</div>
 				))}
 			</dl>
-		</section>
+		</div>
 	);
 }

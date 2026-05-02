@@ -1,7 +1,12 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserWindow, Updater } from 'electrobun/bun';
-import { defineSegRpc, registerMainWindow, setPrefsPath } from './rpc';
+import {
+	defineSegRpc,
+	registerMainWindow,
+	setPrefsPath,
+	startUpdaterPolling,
+} from './rpc';
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -65,7 +70,7 @@ const rpc = defineSegRpc();
 const savedFrame = await readWindowPrefs();
 
 const mainWindow = new BrowserWindow({
-	title: 'SEG',
+	title: 'Find a Game Like That',
 	url,
 	rpc,
 	titleBarStyle: 'hidden',
@@ -88,4 +93,7 @@ const mainWindow = new BrowserWindow({
 registerMainWindow(mainWindow);
 setPrefsPath(PREFS_PATH);
 
-console.log('SEG desktop started');
+// Kick off the auto-update polling loop. Skips on the dev channel.
+startUpdaterPolling();
+
+console.log('FGLT desktop started');

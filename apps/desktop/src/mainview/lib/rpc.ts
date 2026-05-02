@@ -38,6 +38,15 @@ interface SegRpcShape {
 		windowSetTitle: (
 			params: SegRPC['bun']['requests']['windowSetTitle']['params'],
 		) => Promise<SegRPC['bun']['requests']['windowSetTitle']['response']>;
+		updaterStatus: (
+			params: SegRPC['bun']['requests']['updaterStatus']['params'],
+		) => Promise<SegRPC['bun']['requests']['updaterStatus']['response']>;
+		updaterCheckNow: (
+			params: SegRPC['bun']['requests']['updaterCheckNow']['params'],
+		) => Promise<SegRPC['bun']['requests']['updaterCheckNow']['response']>;
+		updaterApply: (
+			params: SegRPC['bun']['requests']['updaterApply']['params'],
+		) => Promise<SegRPC['bun']['requests']['updaterApply']['response']>;
 	};
 	send: Record<string, never>;
 }
@@ -84,6 +93,28 @@ function createStubRpc(): SegRpcShape {
 			windowSetPosition: () => Promise.resolve({ ok: false }),
 			windowSetFrame: () => Promise.resolve({ ok: false }),
 			windowSetTitle: () => Promise.resolve({ ok: false }),
+			updaterStatus: () =>
+				Promise.resolve({
+					currentVersion: null,
+					updateAvailable: false,
+					updateReady: false,
+					latestVersion: null,
+					lastChecked: null,
+					lastError: null,
+					checking: false,
+				}),
+			updaterCheckNow: () =>
+				Promise.resolve({
+					currentVersion: null,
+					updateAvailable: false,
+					updateReady: false,
+					latestVersion: null,
+					lastChecked: null,
+					lastError: null,
+					checking: false,
+				}),
+			updaterApply: () =>
+				Promise.resolve({ ok: false, error: 'browser stub' }),
 		},
 		send: {},
 	};

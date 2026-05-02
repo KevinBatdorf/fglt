@@ -8,12 +8,13 @@
  *      simple — disks are fast and the user can re-trigger from the UI)
  *   3. refreshGame — proxy through to the API's /games/:appid/refresh
  */
-import { BrowserView, type BrowserWindow, Utils } from 'electrobun/bun';
+import { BrowserView, type BrowserWindow, Updater, Utils } from 'electrobun/bun';
 import type {
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
 	SegRPC,
+	UpdaterStatus,
 } from '../shared/types';
 import { epicLaunchUri, getEpicInstalled } from './launchers/epic';
 import { getGogInstalled, gogLaunchUri } from './launchers/gog';
@@ -34,6 +35,67 @@ export function registerMainWindow(win: BrowserWindow): void {
 	(
 		globalThis as unknown as { __segMainWindow?: BrowserWindow }
 	).__segMainWindow = win;
+}
+
+// ----- Auto-updater state ------------------------------------------------
+//
+// We poll Electrobun's Updater on a 6h schedule (and once at startup), then
+// expose the latest snapshot to the React side via the `updaterStatus` RPC.
+// Long-lived in-process state is fine — only one window/process per user.
+
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+let updaterState: UpdaterStatus = {
+	currentVersion: null,
+	updateAvailable: false,
+	updateReady: false,
+	latestVersion: null,
+	lastChecked: null,
+	lastError: null,
+	checking: false,
+};
+
+async function refreshLocalVersion() {
+	try {
+		updaterState.currentVersion = await Updater.localInfo.version();
+	} catch (e) {
+		console.warn('[updater] localInfo failed:', e);
+	}
+}
+
+async function pollOnce() {
+	if (updaterState.checking) return;
+	updaterState.checking = true;
+	try {
+		const channel = await Updater.localInfo.channel();
+		if (channel === 'dev') {
+			updaterState.lastError = null;
+			updaterState.lastChecked = new Date().toISOString();
+			return;
+		}
+		const result = await Updater.checkForUpdate();
+		updaterState.updateAvailable = !!result.updateAvailable;
+		updaterState.latestVersion = result.version ?? null;
+		updaterState.lastError = result.error || null;
+		updaterState.lastChecked = new Date().toISOString();
+		if (result.updateAvailable) {
+			// Pull the tarball / patches so applyUpdate() is fast when the
+			// user clicks Restart. downloadUpdate sets updateReady on success.
+			await Updater.downloadUpdate();
+			const after = Updater.updateInfo();
+			updaterState.updateReady = !!after?.updateReady;
+		} else {
+			updaterState.updateReady = false;
+		}
+	} catch (e) {
+		updaterState.lastError = e instanceof Error ? e.message : String(e);
+	} finally {
+		updaterState.checking = false;
+	}
+}
+
+export function startUpdaterPolling(): void {
+	void refreshLocalVersion().then(() => pollOnce());
+	setInterval(pollOnce, UPDATE_CHECK_INTERVAL_MS);
 }
 
 // Path to the window-frame prefs file. Wired from index.ts at startup.
@@ -182,6 +244,34 @@ export function defineSegRpc() {
 						return { ok: true };
 					} catch {
 						return { ok: false };
+					}
+				},
+
+				updaterStatus: async (): Promise<UpdaterStatus> => {
+					// Snapshot of the polling-loop state. The React side reads this
+					// and shows a banner when updateReady is true.
+					return { ...updaterState };
+				},
+
+				updaterCheckNow: async (): Promise<UpdaterStatus> => {
+					await pollOnce();
+					return { ...updaterState };
+				},
+
+				updaterApply: async (): Promise<{ ok: boolean; error?: string }> => {
+					if (!updaterState.updateReady) {
+						return { ok: false, error: 'no-update-staged' };
+					}
+					try {
+						// Triggers the swap + relaunch. Process exits inside this call
+						// on success, so the response only matters on failure paths.
+						await Updater.applyUpdate();
+						return { ok: true };
+					} catch (e) {
+						return {
+							ok: false,
+							error: e instanceof Error ? e.message : String(e),
+						};
 					}
 				},
 			},

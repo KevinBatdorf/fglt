@@ -31,6 +31,17 @@ export interface RefreshResult {
 	sources: Record<string, { status: string; detail?: unknown }>;
 }
 
+/** Snapshot of the auto-updater's polling state. */
+export interface UpdaterStatus {
+	currentVersion: string | null;
+	updateAvailable: boolean;
+	updateReady: boolean;
+	latestVersion: string | null;
+	lastChecked: string | null; // ISO timestamp of the most recent check
+	lastError: string | null;
+	checking: boolean;
+}
+
 export type SegRPC = {
 	bun: RPCSchema<{
 		requests: {
@@ -73,6 +84,18 @@ export type SegRPC = {
 			windowSetTitle: {
 				params: { title: string };
 				response: { ok: boolean };
+			};
+			updaterStatus: {
+				params: Record<string, never>;
+				response: UpdaterStatus;
+			};
+			updaterCheckNow: {
+				params: Record<string, never>;
+				response: UpdaterStatus;
+			};
+			updaterApply: {
+				params: Record<string, never>;
+				response: { ok: boolean; error?: string };
 			};
 		};
 		messages: Record<string, never>;
