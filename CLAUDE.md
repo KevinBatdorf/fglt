@@ -1,4 +1,8 @@
-# SEG — find a game like that.
+# Find a Game Like That — architecture & contributor docs
+
+> End-user install / usage docs live in [`README.md`](./README.md). This
+> file is for contributors and Claude Code sessions: schema, container
+> layout, sync flows, conventions.
 
 Self-hosted Postgres + pgvector database of an owned game library, enriched
 with Steam Store metadata, SteamSpy tags, HowLongToBeat completion times, and
