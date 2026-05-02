@@ -1,0 +1,165 @@
+name: Release
+
+# Triggered by pushing a tag like v0.1.0. Builds the desktop app for
+# Windows, macOS, and Linux, then attaches the tarball + update manifest
+# to the GitHub release. The desktop's Electrobun Updater polls
+# https://github.com/KevinBatdorf/fglt/releases/latest/download/<asset>
+# so installed copies pick up new releases automatically.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write  # needed to create / upload to the release
+
+jobs:
+  build:
+    name: Build (${{ matrix.os-label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            os-label: win-x64
+            platform: win
+            arch: x64
+          - runner: macos-14
+            os-label: macos-arm64
+            platform: macos
+            arch: arm64
+          - runner: macos-13
+            os-label: macos-x64
+            platform: macos
+            arch: x64
+          - runner: ubuntu-latest
+            os-label: linux-x64
+            platform: linux
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install root deps
+        run: bun install
+        # API/server side — needed for any pre-bundling step from the root
+
+      - name: Install desktop deps
+        working-directory: apps/desktop
+        run: bun install
+
+      - name: Build desktop (icons + vite + electrobun)
+        working-directory: apps/desktop
+        run: bun run build
+
+      - name: Locate build output
+        id: locate
+        shell: bash
+        working-directory: apps/desktop
+        # Electrobun emits to build/stable-<os>-<arch>/<AppFileName>/
+        # Find that folder dynamically so we don't hardcode the app file
+        # name (it changes if app.name changes).
+        run: |
+          BUILD_DIR="build/stable-${{ matrix.platform }}-${{ matrix.arch }}"
+          if [ ! -d "$BUILD_DIR" ]; then
+            echo "Expected build output at $BUILD_DIR — listing build/:"
+            ls -la build/ || true
+            exit 1
+          fi
+          # The bundle is the only subdirectory inside the platform folder
+          BUNDLE=$(find "$BUILD_DIR" -maxdepth 1 -mindepth 1 -type d | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "No bundle directory inside $BUILD_DIR"; exit 1
+          fi
+          # Read hash + version from the bundle's version.json
+          VERSION_JSON="$BUNDLE/Resources/version.json"
+          if [ ! -f "$VERSION_JSON" ]; then
+            echo "Missing $VERSION_JSON"; exit 1
+          fi
+          HASH=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$VERSION_JSON','utf8')).hash)")
+          VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$VERSION_JSON','utf8')).version)")
+          NAME=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$VERSION_JSON','utf8')).name)")
+          IDENT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$VERSION_JSON','utf8')).identifier)")
+          echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          echo "bundle=$BUNDLE" >> "$GITHUB_OUTPUT"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "app_name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "identifier=$IDENT" >> "$GITHUB_OUTPUT"
+
+      - name: Install zstd (Linux)
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y zstd
+
+      - name: Install zstd (macOS)
+        if: matrix.platform == 'macos'
+        run: brew install zstd
+
+      # Windows already has tar; we use Electrobun's bundled zig-zstd via
+      # bun fallback. Simplest path: shell into a Bun one-liner that uses
+      # node's child_process for tar + the system zstd.
+      - name: Package tarball
+        id: package
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          PREFIX="stable-${{ matrix.platform }}-${{ matrix.arch }}"
+          # Tarball name follows getTarballFileName: macOS uses .app.tar.zst,
+          # other OSes use .tar.zst on the bare bundle name.
+          BUNDLE_NAME=$(basename "${{ steps.locate.outputs.bundle }}")
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            TAR_NAME="${BUNDLE_NAME}.app.tar.zst"
+          else
+            TAR_NAME="${BUNDLE_NAME}.tar.zst"
+          fi
+          ASSET_NAME="${PREFIX}-${TAR_NAME}"
+          # Tar from inside the bundle's parent so the archive root is the
+          # bundle itself (matches what Electrobun's Updater extracts).
+          PARENT=$(dirname "${{ steps.locate.outputs.bundle }}")
+          tar -C "$PARENT" -cf - "$BUNDLE_NAME" | zstd -19 -o "$ASSET_NAME"
+          echo "asset=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "tarball_basename=$TAR_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Write update manifest
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          PREFIX="stable-${{ matrix.platform }}-${{ matrix.arch }}"
+          MANIFEST="${PREFIX}-update.json"
+          cat > "$MANIFEST" <<EOF
+          {
+            "version": "${{ steps.locate.outputs.version }}",
+            "hash": "${{ steps.locate.outputs.hash }}",
+            "name": "${{ steps.locate.outputs.app_name }}",
+            "identifier": "${{ steps.locate.outputs.identifier }}",
+            "channel": "stable"
+          }
+          EOF
+          echo "wrote $MANIFEST:"
+          cat "$MANIFEST"
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          PREFIX="stable-${{ matrix.platform }}-${{ matrix.arch }}"
+          TAG="${GITHUB_REF#refs/tags/}"
+          # `gh release create --notes ""` is idempotent-ish — if the release
+          # already exists this errors; the matrix's other jobs (which see the
+          # release exist) will fall through to upload.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                 --title "$TAG" --notes "Automated build for $TAG"
+          gh release upload "$TAG" \
+            "${{ steps.package.outputs.asset }}" \
+            "${PREFIX}-update.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

@@ -27,4 +27,14 @@ export default {
 			icon: 'assets/icon.ico',
 		},
 	},
+	release: {
+		// GitHub releases auto-update host. The Updater fetches
+		// `${baseUrl}/${platformPrefix}-update.json` (e.g.
+		// `…/stable-win-x64-update.json`) and downloads the matching
+		// tarball or patch from the same release. `latest/download` always
+		// resolves to the newest tag, so we don't have to bake the version
+		// into the URL.
+		baseUrl: 'https://github.com/KevinBatdorf/fglt/releases/latest/download',
+		generatePatch: true,
+	},
 } satisfies ElectrobunConfig;
