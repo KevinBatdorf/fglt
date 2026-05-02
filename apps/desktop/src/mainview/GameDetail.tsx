@@ -59,7 +59,11 @@ function plainText(s: string): string {
  * Replace upstream's verbose error strings with concise human messages.
  * Falls back to the cleaned-up original if no friendly mapping exists.
  */
-function friendlyDetail(source: string, status: string, detail: unknown): string {
+function friendlyDetail(
+	source: string,
+	status: string,
+	detail: unknown,
+): string {
 	const raw = plainText(
 		typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '',
 	);
@@ -343,9 +347,7 @@ export function GameDetail({
 			{/* Body */}
 			<div className="px-6 py-6 space-y-7">
 				{error && <div className="text-red-400 text-sm">{error}</div>}
-				{!game && !error && (
-					<LoadingState />
-				)}
+				{!game && !error && <LoadingState />}
 
 				{game && (
 					<>
@@ -376,7 +378,7 @@ export function GameDetail({
 						{/* Right metadata column is capped — it grew unreasonably
 					    wide on big monitors when sized as a flex `1fr`. The
 					    media column (left) absorbs all the extra width. */}
-					<div className="grid lg:grid-cols-[1fr_clamp(280px,22vw,360px)] gap-8">
+						<div className="grid lg:grid-cols-[1fr_clamp(280px,22vw,360px)] gap-8">
 							<div className="space-y-6">
 								{game.short_desc && (
 									<section>
@@ -468,10 +470,7 @@ export function GameDetail({
 										)}
 									</div>
 									{game.reviews && game.reviews.length > 0 ? (
-										<ReviewsSection
-											reviews={game.reviews}
-											appid={game.appid}
-										/>
+										<ReviewsSection reviews={game.reviews} appid={game.appid} />
 									) : (
 										<PendingPlaceholder
 											pending={game.steam_reviews_fetched_at === null}
@@ -579,7 +578,6 @@ export function GameDetail({
 								</div>
 							</section>
 						)}
-
 					</>
 				)}
 			</div>
@@ -859,8 +857,7 @@ function CriticScoresSection({
 	const hasMeta = game.metacritic !== null;
 	const hasOC = !!ocScore;
 	const hasSteam = positivePct !== null;
-	const totalReviews =
-		(game.positive ?? 0) + (game.negative ?? 0) || null;
+	const totalReviews = (game.positive ?? 0) + (game.negative ?? 0) || null;
 	// Hide the OpenCritic placeholder noise when Metacritic OR Steam %
 	// already gives the user a score signal. Only nag when there's
 	// literally nothing.
@@ -954,9 +951,7 @@ function SteamReviewScoreCard({
 				<span className="text-[10px] uppercase tracking-wider text-zinc-500">
 					Steam reviews
 				</span>
-				<span
-					className={`text-[9px] uppercase tracking-wider ${tierClass}`}
-				>
+				<span className={`text-[9px] uppercase tracking-wider ${tierClass}`}>
 					{tier}
 				</span>
 			</div>
@@ -1092,13 +1087,7 @@ function GameInfoSection({ game }: { game: GameDetailType }) {
 	);
 }
 
-function MetacriticCard({
-	score,
-	url,
-}: {
-	score: number;
-	url: string | null;
-}) {
+function MetacriticCard({ score, url }: { score: number; url: string | null }) {
 	const inner = (
 		<>
 			<div className="flex items-baseline gap-2">
@@ -1133,61 +1122,61 @@ function MetacriticCard({
 function ExternalScoresSection({ scores }: { scores: ExternalScore[] }) {
 	return (
 		<div className="space-y-2">
-				{scores.map((s) => {
-					const label = s.source === 'opencritic' ? 'OpenCritic' : s.source;
-					const score =
-						s.score !== null
-							? `${Math.round(s.score)}${s.max_score === 100 ? '' : `/${s.max_score}`}`
-							: '—';
-					const sub: string[] = [];
-					if (s.tier) sub.push(s.tier);
-					if (s.percent_recommended !== null)
-						sub.push(`${Math.round(s.percent_recommended)}% rec`);
-					if (s.num_reviews !== null) sub.push(`${s.num_reviews} reviews`);
-					const inner = (
-						<>
-							<div className="flex items-baseline gap-2">
-								<span className="text-[10px] uppercase tracking-wider text-zinc-500">
-									{label}
+			{scores.map((s) => {
+				const label = s.source === 'opencritic' ? 'OpenCritic' : s.source;
+				const score =
+					s.score !== null
+						? `${Math.round(s.score)}${s.max_score === 100 ? '' : `/${s.max_score}`}`
+						: '—';
+				const sub: string[] = [];
+				if (s.tier) sub.push(s.tier);
+				if (s.percent_recommended !== null)
+					sub.push(`${Math.round(s.percent_recommended)}% rec`);
+				if (s.num_reviews !== null) sub.push(`${s.num_reviews} reviews`);
+				const inner = (
+					<>
+						<div className="flex items-baseline gap-2">
+							<span className="text-[10px] uppercase tracking-wider text-zinc-500">
+								{label}
+							</span>
+							{s.tier && (
+								<span className="text-[9px] uppercase tracking-wider text-emerald-400">
+									{s.tier}
 								</span>
-								{s.tier && (
-									<span className="text-[9px] uppercase tracking-wider text-emerald-400">
-										{s.tier}
-									</span>
-								)}
-							</div>
-							<div className="mt-0.5 flex items-baseline gap-2">
-								<span className="text-lg font-semibold tabular-nums text-zinc-100">
-									{score}
-								</span>
-								{sub.length > 0 && (
-									<span className="text-[11px] text-zinc-500">
-										{sub.slice(s.tier ? 1 : 0).join(' · ')}
-									</span>
-								)}
-							</div>
-						</>
-					);
-					return s.url ? (
-						<button
-							type="button"
-							key={s.source}
-							onClick={() => rpc.request.openUrl({ url: s.url ?? '' })}
-							className="w-full text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-md py-2 px-3 transition-colors"
-							title={`Open on ${label}`}
-						>
-							{inner}
-						</button>
-					) : (
-						<div
-							key={s.source}
-							className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3"
-						>
-							{inner}
+							)}
 						</div>
-					);
-				})}
-			</div>
+						<div className="mt-0.5 flex items-baseline gap-2">
+							<span className="text-lg font-semibold tabular-nums text-zinc-100">
+								{score}
+							</span>
+							{sub.length > 0 && (
+								<span className="text-[11px] text-zinc-500">
+									{sub.slice(s.tier ? 1 : 0).join(' · ')}
+								</span>
+							)}
+						</div>
+					</>
+				);
+				return s.url ? (
+					<button
+						type="button"
+						key={s.source}
+						onClick={() => rpc.request.openUrl({ url: s.url ?? '' })}
+						className="w-full text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-md py-2 px-3 transition-colors"
+						title={`Open on ${label}`}
+					>
+						{inner}
+					</button>
+				) : (
+					<div
+						key={s.source}
+						className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3"
+					>
+						{inner}
+					</div>
+				);
+			})}
+		</div>
 	);
 }
 

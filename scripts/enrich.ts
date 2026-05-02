@@ -25,7 +25,10 @@ const BACKFILL_BATCH = Number.parseInt(
 );
 const DELAY_MS = Number.parseInt(process.env.ENRICH_DELAY_MS ?? '1500', 10);
 
-async function runBatch(label: string, rows: { appid: number; name: string }[]) {
+async function runBatch(
+	label: string,
+	rows: { appid: number; name: string }[],
+) {
 	console.log(`[enrich/${label}] picked ${rows.length} games`);
 	let ok = 0;
 	let skipped = 0;

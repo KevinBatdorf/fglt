@@ -113,8 +113,7 @@ function createStubRpc(): SegRpcShape {
 					lastError: null,
 					checking: false,
 				}),
-			updaterApply: () =>
-				Promise.resolve({ ok: false, error: 'browser stub' }),
+			updaterApply: () => Promise.resolve({ ok: false, error: 'browser stub' }),
 		},
 		send: {},
 	};

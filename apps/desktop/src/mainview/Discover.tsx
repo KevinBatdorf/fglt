@@ -99,4 +99,3 @@ function pick(data: CurateResponse | null, what: Props['what']): LibraryGame[] {
 	}
 	return out;
 }
-

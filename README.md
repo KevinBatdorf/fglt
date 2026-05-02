@@ -16,58 +16,58 @@ backlog.
 ## Install
 
 You'll need **Docker** (for the local database + sync workers) and a
-**Steam API key**.
+free **Steam API key**. No clone of the repo, no `.env`, no shell config.
 
-1. Clone and configure:
+1. **Install Docker.** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   on Windows / macOS or Docker Engine on Linux. Make sure it's *running*
+   — Docker Desktop doesn't auto-start by default.
+
+2. **Start the backend stack.** Download
+   [`docker-compose.consumer.yml`](https://github.com/KevinBatdorf/fglt/releases/latest/download/docker-compose.consumer.yml)
+   from the latest release, save it anywhere, then from that folder:
    ```bash
-   git clone https://github.com/KevinBatdorf/fglt.git
-   cd fglt
-   cp .env.example .env
+   docker compose -f docker-compose.consumer.yml up -d
    ```
-   Open `.env` and fill in:
-   - `STEAM_API_KEY` — get one (free) at <https://steamcommunity.com/dev/apikey>
-   - `STEAM_ID` — your 64-bit SteamID. Paste your Steam profile URL into <https://steamid.io/> to find it.
+   This pulls prebuilt images and runs Postgres + the API + the cron
+   workers on `localhost:3110` and `localhost:5532`. No `.env` needed.
 
-2. Start the local stack:
-   ```bash
-   docker compose up -d
-   ```
-   This brings up Postgres, the API, and the cron workers that sync your
-   library and enrich it over time.
-
-3. Download the desktop app for your OS from
+3. **Download the desktop app** for your OS from
    [the latest release](https://github.com/KevinBatdorf/fglt/releases/latest)
-   and run it.
+   and launch it.
+
+4. **Add your Steam credentials.** On first launch the app opens straight
+   to **Settings → Configuration** and stays there until you fill in:
+   - **Steam API key** — free at <https://steamcommunity.com/dev/apikey>
+   - **Steam ID (64-bit)** — paste your Steam profile URL into <https://steamid.io/>
+
+   Hit Save. The app unlocks within a second or two and starts syncing.
 
 ## First run
 
-The app shows a banner at the top if anything's not quite right (Docker
-isn't running, library's empty, an integration's not configured). Follow
-the instructions there.
+After the initial sync the **enricher** cron runs every 15 minutes and
+gradually fills in metadata, screenshots, reviews, and HowLongToBeat
+times. A 2,000-game library is fully enriched in a few hours.
 
-For an initial sync, either wait for the daily sync cron, or kick it off
-manually:
-```bash
-curl -X POST http://localhost:3110/sync
-```
-
-After sync, the **enricher** runs every 15 minutes and gradually fills in
-metadata, screenshots, reviews, and HowLongToBeat times. A 2,000-game
-library is fully enriched in a few hours.
+The home page becomes interesting once a few hundred games are enriched.
+Until then the app's a bit of a "dashboard waiting for paint" — that's
+expected.
 
 ## Optional integrations
 
+Every key below is **optional** and lives in **Settings → Configuration**
+inside the desktop app. The library is fully usable without any of them.
+
 | Add this | What you get | How |
 |---|---|---|
-| **YouTube API key** | Walkthrough / let's-play videos on each game's detail page | <https://console.cloud.google.com> → enable "YouTube Data API v3" → drop key in `.env` as `YOUTUBE_API_KEY` |
-| **OpenCritic key** | Aggregated critic scores alongside Metacritic | Sign up free at <https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api>, copy your `X-RapidAPI-Key`, add to `.env` as `OPENCRITIC_API_KEY` |
-| **Ollama** | Local AI for embeddings + "vibe" chip generation. Free, private. | Default. Install [Ollama](https://ollama.com) and pull `nomic-embed-text` + a chat model like `qwen3:14b` |
-| **OpenAI / Groq / Together** | Cloud AI as an alternative | Set `AI_BASE_URL` + `AI_API_KEY` + `AI_CHAT_MODEL` + `AI_EMBED_MODEL` in `.env` |
+| **YouTube API key** | Walkthrough / let's-play videos on each game's detail page | <https://console.cloud.google.com> → enable "YouTube Data API v3" → paste the key into Settings |
+| **OpenCritic key** | Aggregated critic scores alongside Metacritic | Sign up free at <https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api>, copy your `X-RapidAPI-Key`, paste into Settings |
+| **Ollama** | Local AI for embeddings + "vibe" chip generation. Free, private. | Install [Ollama](https://ollama.com) and pull `nomic-embed-text` + a chat model like `qwen3:14b`. The default config talks to `http://host.docker.internal:11434`. |
+| **OpenAI / Groq / Together** | Cloud AI as an alternative | Set the AI base URL + API key + chat/embed model names in Settings |
 
-If you skip the AI integrations, search still works (keyword-only) and the
-"vibe" chips fall back to a static list. Skip YouTube if you don't want
-videos. Skip OpenCritic if Metacritic-only is enough — Metacritic comes
-free through Steam.
+If you skip the AI integrations, search still works (keyword-only) and
+the "vibe" chips fall back to a static list. Skip YouTube if you don't
+want videos. Skip OpenCritic if Metacritic-only is enough — Metacritic
+comes free through Steam.
 
 ## Multi-platform
 

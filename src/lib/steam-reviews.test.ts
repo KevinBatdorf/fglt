@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { fetchCalls, installMockFetch, jsonResponse } from './_test/mockFetch';
 import { fetchSteamReviews } from './steam-reviews';
-import {
-	fetchCalls,
-	installMockFetch,
-	jsonResponse,
-} from './_test/mockFetch';
 
 let restore: () => void = () => {};
 afterEach(() => restore());

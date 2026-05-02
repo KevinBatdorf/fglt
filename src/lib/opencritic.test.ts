@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-	fetchCalls,
-	installMockFetch,
-	jsonResponse,
-} from './_test/mockFetch';
+import { fetchCalls, installMockFetch, jsonResponse } from './_test/mockFetch';
+
 // Set the API key BEFORE importing the lib so isOpenCriticEnabled() picks it up.
 process.env.OPENCRITIC_API_KEY = 'test-key';
 const {
@@ -81,9 +78,7 @@ describe('fetchOpenCriticScore', () => {
 			return new Response('', { status: 404 });
 		});
 		await fetchOpenCriticScore(1, 'Cyberpunk 2077');
-		const searchCall = fetchCalls.find((c) =>
-			c.url.includes('/game/search'),
-		);
+		const searchCall = fetchCalls.find((c) => c.url.includes('/game/search'));
 		expect(searchCall?.headers['x-rapidapi-key']).toBe('test-key');
 		expect(searchCall?.headers['x-rapidapi-host']).toBe(
 			'opencritic-api.p.rapidapi.com',

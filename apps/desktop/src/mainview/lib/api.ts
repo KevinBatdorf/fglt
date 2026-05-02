@@ -4,7 +4,11 @@
  * Kept thin — every function returns the unwrapped JSON. Errors throw with
  * the API's status code so the caller can decide UX.
  */
-import type { Platform, RefreshResult, RefreshSource } from '../../shared/types';
+import type {
+	Platform,
+	RefreshResult,
+	RefreshSource,
+} from '../../shared/types';
 
 export const API_BASE =
 	import.meta.env?.VITE_API_BASE ?? 'http://localhost:3110';
@@ -297,6 +301,43 @@ export interface HealthStatus {
 	steam_id: 'present' | 'missing';
 	total_games: number;
 	last_sync: string | null;
+	/**
+	 * Keys that are REQUIRED for the app to do anything useful but aren't
+	 * set yet. Empty array = good to go. Currently always a subset of
+	 * ['STEAM_API_KEY', 'STEAM_ID']. The desktop UI uses this to lock the
+	 * user into the Settings page until they're filled in.
+	 */
+	required_missing: string[];
+}
+
+/**
+ * Mirrors `AppConfig` on the server. All keys optional — undefined means
+ * "not set anywhere". When `reveal=false` (default), sensitive keys come
+ * back masked as "••••<last4>".
+ */
+export interface ConfigResponse {
+	config: Partial<Record<ConfigKey, string>>;
+}
+
+export type ConfigKey =
+	| 'STEAM_API_KEY'
+	| 'STEAM_ID'
+	| 'YOUTUBE_API_KEY'
+	| 'OPENCRITIC_API_KEY'
+	| 'AI_BASE_URL'
+	| 'AI_API_KEY'
+	| 'AI_PROVIDER_NAME'
+	| 'AI_CHAT_MODEL'
+	| 'AI_EMBED_MODEL'
+	| 'OLLAMA_URL'
+	| 'OLLAMA_CHAT_MODEL'
+	| 'OLLAMA_EMBED_MODEL'
+	| 'HLTB_DAILY_BUDGET'
+	| 'OPENCRITIC_DAILY_BUDGET';
+
+/** Cross-component event: emitted right after a successful POST /settings/config. */
+export function notifyConfigChanged(): void {
+	window.dispatchEvent(new CustomEvent('seg:config:changed'));
 }
 
 export const api = {
@@ -379,10 +420,7 @@ export const api = {
 	 */
 	refreshGame: (appid: number, source: RefreshSource = 'all') => {
 		const qs = source !== 'all' ? `?source=${source}` : '';
-		return jsonCall<RefreshResult>(
-			`/games/${appid}/refresh${qs}`,
-			'POST',
-		);
+		return jsonCall<RefreshResult>(`/games/${appid}/refresh${qs}`, 'POST');
 	},
 	addToList: (listRef: string | number, appid: number, note?: string) =>
 		jsonCall<unknown>(`/lists/${listRef}/games/${appid}`, 'POST', { note }),
@@ -409,6 +447,24 @@ export const api = {
 		}),
 	genres: (signal?: AbortSignal) =>
 		get<{ genres: { name: string; games: number }[] }>('/genres', signal),
+	/**
+	 * Read the runtime config. Sensitive keys (API keys) are masked unless
+	 * `reveal=true`, which the UI uses for click-to-reveal — never bake
+	 * `reveal=true` into a default fetch.
+	 */
+	config: (reveal = false, signal?: AbortSignal) =>
+		get<ConfigResponse>(`/settings/config${reveal ? '?reveal=1' : ''}`, signal),
+	/**
+	 * Upsert one or more config keys. Empty string deletes the row. The
+	 * server invalidates its in-process cache so the next /health poll
+	 * reflects the change immediately.
+	 */
+	saveConfig: (updates: Partial<Record<ConfigKey, string>>) =>
+		jsonCall<{ ok: boolean; updated: number; deleted: number }>(
+			'/settings/config',
+			'POST',
+			updates,
+		),
 };
 
 /**

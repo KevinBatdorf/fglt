@@ -56,9 +56,7 @@ export function listsRoutes(raw: postgres.Sql) {
 			// the right-click "Create list from results" flow where the
 			// client already ran the hybrid search.
 			if (body.appids && body.appids.length > 0) {
-				const valid = body.appids.filter(
-					(n) => Number.isFinite(n) && n > 0,
-				);
+				const valid = body.appids.filter((n) => Number.isFinite(n) && n > 0);
 				if (valid.length > 0) {
 					const rows = valid.map((appid) => ({
 						list_id: (list as { id: number }).id,
@@ -69,10 +67,7 @@ export function listsRoutes(raw: postgres.Sql) {
 						ON CONFLICT (list_id, appid) DO NOTHING
 					`;
 				}
-				return c.json(
-					{ ...(list as object), games_added: valid.length },
-					201,
-				);
+				return c.json({ ...(list as object), games_added: valid.length }, 201);
 			}
 
 			// Optional: bulk-fill from a server-side FTS search. Useful when
@@ -150,10 +145,7 @@ export function listsRoutes(raw: postgres.Sql) {
 		// new one before retrying.
 		const [{ count }] = await raw`SELECT COUNT(*)::int AS count FROM lists`;
 		if ((count as number) <= 1) {
-			return c.json(
-				{ error: 'at least one list must remain' },
-				400,
-			);
+			return c.json({ error: 'at least one list must remain' }, 400);
 		}
 		await raw`DELETE FROM lists WHERE id = ${list.id}`;
 		return c.json({ ok: true });

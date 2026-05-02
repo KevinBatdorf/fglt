@@ -46,7 +46,9 @@ export function libraryRoutes(raw: postgres.Sql) {
 		// Weekend / short games — filter by HLTB main story length.
 		const maxHltbMain = num(c.req.query('max_hltb_main'));
 		if (maxHltbMain !== undefined) {
-			conds.push(raw`g.hltb_main IS NOT NULL AND g.hltb_main <= ${maxHltbMain}`);
+			conds.push(
+				raw`g.hltb_main IS NOT NULL AND g.hltb_main <= ${maxHltbMain}`,
+			);
 		}
 		if (genre) conds.push(raw`${genre} = ANY(g.genres)`);
 		if (tag)

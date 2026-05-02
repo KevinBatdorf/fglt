@@ -171,8 +171,7 @@ export async function fetchOpenCriticScore(
 			typeof game.percentRecommended === 'number'
 				? game.percentRecommended
 				: null,
-		num_reviews:
-			typeof game.numReviews === 'number' ? game.numReviews : null,
+		num_reviews: typeof game.numReviews === 'number' ? game.numReviews : null,
 		tier,
 		url: game.url ?? `https://opencritic.com/game/${best.id}`,
 		raw: game,

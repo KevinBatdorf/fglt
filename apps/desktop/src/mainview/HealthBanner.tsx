@@ -42,7 +42,8 @@ function deriveState(
 	if (health.db === 'down') return { kind: 'db_down', health };
 	if (health.steam_key === 'missing')
 		return { kind: 'missing_steam_key', health };
-	if (health.steam_id === 'missing') return { kind: 'missing_steam_id', health };
+	if (health.steam_id === 'missing')
+		return { kind: 'missing_steam_id', health };
 	if (health.total_games === 0) return { kind: 'empty_library', health };
 	if (updater?.updateReady) return { kind: 'update_ready', updater };
 	return { kind: 'ok' };
@@ -53,7 +54,16 @@ function dismissKeyFor(state: BannerState): string {
 	return state.kind;
 }
 
-export function HealthBanner() {
+interface BannerProps {
+	/**
+	 * Called when the user clicks "Open setup guide" from the unreachable
+	 * banner. The page works without an API connection, so it's safe to
+	 * navigate to even when nothing else is reachable.
+	 */
+	onOpenSetupGuide?: () => void;
+}
+
+export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 	const [health, setHealth] = useState<HealthStatus | null>(null);
 	const [reachable, setReachable] = useState(true);
 	const [updater, setUpdater] = useState<UpdaterStatus | null>(null);
@@ -118,6 +128,15 @@ export function HealthBanner() {
 			<div className="flex-1 leading-relaxed">
 				<HealthMessage state={state} />
 			</div>
+			{state.kind === 'unreachable' && onOpenSetupGuide && (
+				<button
+					type="button"
+					onClick={onOpenSetupGuide}
+					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+				>
+					Open setup guide ↗
+				</button>
+			)}
 			{isUpdateReady ? (
 				<button
 					type="button"
@@ -165,72 +184,45 @@ function HealthMessage({ state }: { state: BannerState }) {
 		case 'unreachable':
 			return (
 				<>
-					<strong>Can't reach the API.</strong> Is the Docker stack running?
-					Run <code className="font-mono">docker compose up -d</code> in the
-					project root.
+					<strong>Can't reach the local backend.</strong> The setup guide walks
+					through getting Docker running so the app has a database to talk to.
 				</>
 			);
 		case 'db_down':
 			return (
 				<>
 					<strong>Database isn't ready.</strong> The API is up but Postgres
-					isn't responding. Check{' '}
+					isn't responding — usually a container restart fixes it. Check{' '}
 					<code className="font-mono">docker compose logs postgres</code>.
 				</>
 			);
 		case 'missing_steam_key':
 			return (
 				<>
-					<strong>STEAM_API_KEY isn't set</strong> in <code>.env</code>.
-					Library sync won't work.{' '}
-					<button
-						type="button"
-						onClick={() =>
-							rpc.request.openUrl({
-								url: 'https://steamcommunity.com/dev/apikey',
-							})
-						}
-						className="underline hover:no-underline"
-					>
-						Get one here
-					</button>{' '}
-					and restart the API container.
+					<strong>Steam API key isn't set.</strong> Library sync won't work
+					without it. Set it in <strong>Settings → Configuration</strong>.
 				</>
 			);
 		case 'missing_steam_id':
 			return (
 				<>
-					<strong>STEAM_ID isn't set</strong> in <code>.env</code>. Find your
-					64-bit SteamID at{' '}
-					<button
-						type="button"
-						onClick={() =>
-							rpc.request.openUrl({ url: 'https://steamid.io/' })
-						}
-						className="underline hover:no-underline"
-					>
-						steamid.io
-					</button>
-					.
+					<strong>Steam ID isn't set.</strong> Set it in{' '}
+					<strong>Settings → Configuration</strong>.
 				</>
 			);
 		case 'empty_library':
 			return (
 				<>
-					<strong>No games yet.</strong> Run{' '}
-					<code className="font-mono">
-						curl -X POST http://localhost:3110/sync
-					</code>{' '}
-					to pull your library now, or wait for the daily syncer cron.
+					<strong>No games yet.</strong> Open <strong>Settings → Sync</strong>{' '}
+					and click "Sync Steam now" to pull your library, or wait for the daily
+					syncer cron.
 				</>
 			);
 		case 'update_ready':
 			return (
 				<>
-					<strong>
-						Update v{state.updater.latestVersion} ready.
-					</strong>{' '}
-					Restart the app to apply.
+					<strong>Update v{state.updater.latestVersion} ready.</strong> Restart
+					the app to apply.
 				</>
 			);
 		default:

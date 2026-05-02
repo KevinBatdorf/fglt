@@ -35,7 +35,10 @@ export function jsonResponse(
 	});
 }
 
-type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>;
+type Handler = (
+	url: string,
+	init?: RequestInit,
+) => Response | Promise<Response>;
 
 export function installMockFetch(handler: Handler): () => void {
 	const original = globalThis.fetch;

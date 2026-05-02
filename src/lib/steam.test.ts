@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import {
-	fetchCalls,
-	installMockFetch,
-	jsonResponse,
-} from './_test/mockFetch';
+import { fetchCalls, installMockFetch, jsonResponse } from './_test/mockFetch';
 import { fetchAppDetails, stripHtml } from './steam';
 
 let restore: () => void = () => {};
@@ -58,7 +54,9 @@ describe('fetchAppDetails', () => {
 		expect(d?.platforms?.windows).toBe(true);
 		expect(d?.screenshots?.[0]?.path_full).toBe('full.jpg');
 		// Verify the URL we hit
-		expect(fetchCalls[0].url).toContain('store.steampowered.com/api/appdetails');
+		expect(fetchCalls[0].url).toContain(
+			'store.steampowered.com/api/appdetails',
+		);
 		expect(fetchCalls[0].url).toContain('appids=1091500');
 	});
 

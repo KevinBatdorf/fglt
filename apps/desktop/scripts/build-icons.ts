@@ -16,10 +16,10 @@
  * Run with: `bun run build:icons`
  */
 
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import sharp from 'sharp';
 import pngToIco from 'png-to-ico';
+import sharp from 'sharp';
 
 const ROOT = join(import.meta.dir, '..');
 const ASSETS = join(ROOT, 'assets');

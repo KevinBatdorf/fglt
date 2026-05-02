@@ -8,7 +8,12 @@
  *      simple — disks are fast and the user can re-trigger from the UI)
  *   3. refreshGame — proxy through to the API's /games/:appid/refresh
  */
-import { BrowserView, type BrowserWindow, Updater, Utils } from 'electrobun/bun';
+import {
+	BrowserView,
+	type BrowserWindow,
+	Updater,
+	Utils,
+} from 'electrobun/bun';
 import type {
 	InstalledIndex,
 	LaunchResult,
@@ -44,7 +49,7 @@ export function registerMainWindow(win: BrowserWindow): void {
 // Long-lived in-process state is fine — only one window/process per user.
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
-let updaterState: UpdaterStatus = {
+const updaterState: UpdaterStatus = {
 	currentVersion: null,
 	updateAvailable: false,
 	updateReady: false,

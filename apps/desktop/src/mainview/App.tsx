@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InstalledIndex } from '../shared/types';
 import { AllGames } from './AllGames';
 import { Discover } from './Discover';
-import { GameGrid } from './GameGrid';
-import { LoadingState } from './LoadingState';
 import { GameDetail } from './GameDetail';
+import { GameGrid } from './GameGrid';
 import { HealthBanner } from './HealthBanner';
 import { Home } from './Home';
-import { ResizeEdges } from './ResizeEdges';
+import { LoadingState } from './LoadingState';
 import {
 	api,
+	type HealthStatus,
 	type LibraryGame,
 	type ListSummary,
 	notifyListsChanged,
@@ -19,14 +19,17 @@ import {
 import {
 	clearRecentlyViewed,
 	getRecentlyViewed,
+	getVibesCount,
+	getVibesEnabled,
 	type RecentlyViewedEntry,
 	removeFromRecentlyViewed,
 } from './lib/prefs';
-import { getVibesCount, getVibesEnabled } from './lib/prefs';
 import { rpc } from './lib/rpc';
 import { VIBES } from './lib/vibes';
+import { ResizeEdges } from './ResizeEdges';
 import { Select } from './Select';
 import { Settings } from './Settings';
+import { SetupGuide } from './SetupGuide';
 import { Sidebar, type View } from './Sidebar';
 import { TitleBar } from './TitleBar';
 
@@ -63,6 +66,16 @@ function App() {
 	const [lists, setLists] = useState<ListSummary[]>([]);
 	const [detailGameName, setDetailGameName] = useState<string | null>(null);
 	const [vibesRefreshing, setVibesRefreshing] = useState(false);
+	// Lockout state — lifted out of HealthBanner so the Sidebar + Settings
+	// can both react to it. `locked` collapses two cases into one prop:
+	//   1. required keys (STEAM_API_KEY, STEAM_ID) aren't set
+	//   2. the API itself is unreachable (Docker down)
+	// In both cases the user can't usefully click anything except Settings
+	// and Setup Guide, so the rest of the sidebar is dimmed.
+	const [health, setHealth] = useState<HealthStatus | null>(null);
+	const [apiReachable, setApiReachable] = useState(true);
+	const requiredMissing = health?.required_missing ?? [];
+	const locked = !apiReachable || requiredMissing.length > 0;
 	const mainRef = useRef<HTMLElement>(null);
 
 	// Reset scroll on every view change so search results / list switches
@@ -83,6 +96,47 @@ function App() {
 			.then((d) => setLists(d.lists))
 			.catch(console.error);
 	}, [refreshStats]);
+
+	// Poll /health every 30s + on every `seg:config:changed` event so a Save
+	// in Settings releases the lockout instantly instead of after the next
+	// scheduled poll. We also reach for it on mount so the very first paint
+	// already knows whether to lock.
+	useEffect(() => {
+		let cancelled = false;
+		const poll = async () => {
+			try {
+				const h = await api.health();
+				if (cancelled) return;
+				setHealth(h);
+				setApiReachable(true);
+			} catch {
+				if (cancelled) return;
+				setApiReachable(false);
+				setHealth(null);
+			}
+		};
+		void poll();
+		const t = setInterval(() => void poll(), 30_000);
+		const onConfigChanged = () => void poll();
+		window.addEventListener('seg:config:changed', onConfigChanged);
+		return () => {
+			cancelled = true;
+			clearInterval(t);
+			window.removeEventListener('seg:config:changed', onConfigChanged);
+		};
+	}, []);
+
+	// While locked, force the user onto Settings (or let them stay on
+	// SetupGuide if that's where they navigated to). Detail / search /
+	// list views all get dropped — the sidebar nav is dimmed too so this
+	// shouldn't surprise the user mid-flow.
+	useEffect(() => {
+		if (!locked) return;
+		if (view.kind === 'settings' || view.kind === 'setup_guide') return;
+		setView({ kind: 'settings' });
+		setHistory([]);
+		setQuery('');
+	}, [locked, view]);
 
 	// Reset the resolved detail-page game name whenever we leave detail.
 	useEffect(() => {
@@ -230,13 +284,18 @@ function App() {
 		[view, lists, detailGameName, query],
 	);
 	const windowTitle = titleSuffix ? `SEG · ${titleSuffix}` : 'SEG';
-	const showHeader = view.kind !== 'detail' && view.kind !== 'settings';
+	const showHeader =
+		view.kind !== 'detail' &&
+		view.kind !== 'settings' &&
+		view.kind !== 'setup_guide';
 
 	return (
 		<div className="relative h-screen bg-zinc-950 text-zinc-100 flex flex-col border border-zinc-700">
 			<ResizeEdges />
 			<TitleBar title={windowTitle} />
-			<HealthBanner />
+			<HealthBanner
+				onOpenSetupGuide={() => navigate({ kind: 'setup_guide' })}
+			/>
 			<div className="flex-1 flex min-h-0">
 				<Sidebar
 					view={view}
@@ -247,6 +306,7 @@ function App() {
 						writeRecent([]);
 					}}
 					platformCounts={stats?.platforms ?? {}}
+					locked={locked}
 				/>
 
 				<div className="flex-1 min-w-0 flex flex-col">
@@ -283,6 +343,8 @@ function App() {
 							canBack={history.length > 0}
 							refreshStats={refreshStats}
 							onDetailLoaded={setDetailGameName}
+							requiredMissing={requiredMissing}
+							onOpenSettings={() => navigate({ kind: 'settings' })}
 						/>
 					</main>
 				</div>
@@ -314,6 +376,8 @@ function deriveTitleSuffix(
 			return lists.find((l) => l.slug === view.slug)?.name ?? view.slug;
 		case 'settings':
 			return 'Settings';
+		case 'setup_guide':
+			return 'Setup guide';
 		default:
 			return null;
 	}
@@ -516,6 +580,8 @@ function MainView({
 	canBack,
 	refreshStats,
 	onDetailLoaded,
+	requiredMissing,
+	onOpenSettings,
 }: {
 	view: View;
 	stats: Stats | null;
@@ -527,6 +593,8 @@ function MainView({
 	canBack: boolean;
 	refreshStats: () => void;
 	onDetailLoaded: (name: string | null) => void;
+	requiredMissing: string[];
+	onOpenSettings: () => void;
 }) {
 	if (view.kind === 'home')
 		return (
@@ -600,17 +668,18 @@ function MainView({
 			/>
 		);
 	if (view.kind === 'recently_viewed')
-		return (
-			<RecentlyViewedView installed={installed} onSelect={onSelectGame} />
-		);
+		return <RecentlyViewedView installed={installed} onSelect={onSelectGame} />;
 	if (view.kind === 'settings')
 		return (
 			<Settings
 				stats={stats}
 				onStatsRefresh={refreshStats}
 				onSelect={onSelectGame}
+				requiredMissing={requiredMissing}
 			/>
 		);
+	if (view.kind === 'setup_guide')
+		return <SetupGuide onOpenSettings={onOpenSettings} />;
 	return null;
 }
 
@@ -762,8 +831,7 @@ function SearchResults({
 						</>
 					) : (
 						<>
-							{visible.length}{' '}
-							{visible.length === 1 ? 'result' : 'results'} for{' '}
+							{visible.length} {visible.length === 1 ? 'result' : 'results'} for{' '}
 							<span className="text-zinc-300">"{query}"</span>
 						</>
 					)}
@@ -893,8 +961,7 @@ function ListView({
 	// Don't render stale-list data when navigating list-to-list — the
 	// previous list's games would briefly flash. Only render once loaded
 	// data matches the requested slug.
-	if (loading || !list || list.slug !== slug)
-		return <LoadingState />;
+	if (loading || !list || list.slug !== slug) return <LoadingState />;
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (!list) return null;
 
@@ -935,9 +1002,8 @@ function RecentlyViewedView({
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 }) {
-	const [entries, setEntries] = useState<RecentlyViewedEntry[]>(
-		getRecentlyViewed,
-	);
+	const [entries, setEntries] =
+		useState<RecentlyViewedEntry[]>(getRecentlyViewed);
 	const [games, setGames] = useState<LibraryGame[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [filter, setFilter] = useState('');
@@ -990,9 +1056,8 @@ function RecentlyViewedView({
 						<span>👁</span> Recently viewed
 					</h1>
 					<p className="text-xs text-zinc-500">
-						{entries.length}{' '}
-						{entries.length === 1 ? 'game' : 'games'} you've opened (most
-						recent first)
+						{entries.length} {entries.length === 1 ? 'game' : 'games'} you've
+						opened (most recent first)
 					</p>
 				</div>
 				{entries.length > 0 && (

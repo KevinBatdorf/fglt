@@ -1,0 +1,131 @@
+# =====================================================================
+# Consumer compose — for end-users running the desktop app from a
+# downloaded binary. NO `.env` required: every API key gets entered via
+# the desktop app's Settings → Configuration page (persisted to the
+# `app_settings` Postgres table).
+#
+# Defaults are baked in:
+#   - API at http://localhost:3110
+#   - Postgres at localhost:5532 (host) / 5432 (container)
+#   - All cron jobs run on their normal schedules; they no-op cleanly
+#     until the user fills in the matching key in Settings.
+#
+# Usage:
+#   docker compose -f docker-compose.consumer.yml up -d
+#   docker compose -f docker-compose.consumer.yml down
+#
+# Pulls prebuilt images from GHCR — does NOT require a clone of the
+# source repo. Update by re-pulling the image tag:
+#   docker compose -f docker-compose.consumer.yml pull
+#   docker compose -f docker-compose.consumer.yml up -d
+# =====================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: fglt-postgres
+    shm_size: 1g
+    environment:
+      POSTGRES_USER: steam
+      POSTGRES_PASSWORD: steam
+      POSTGRES_DB: steam
+    volumes:
+      - fglt-pgdata:/var/lib/postgresql/data
+    ports:
+      - '5532:5432'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U steam -d steam']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    image: ghcr.io/kevinbatdorf/fglt:latest
+    container_name: fglt-api
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
+      PORT: '3110'
+      # All other keys (STEAM_API_KEY, AI_*, YOUTUBE_API_KEY, etc.) are
+      # left UNSET on purpose. The desktop UI writes them to Postgres,
+      # `getConfig()` reads from there, and a process restart is not
+      # required when the user updates a value.
+    command: bun run /app/src/index.ts
+    ports:
+      - '3110:3110'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - 'CMD'
+        - 'bun'
+        - '-e'
+        - "fetch('http://localhost:3110/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  syncer:
+    image: ghcr.io/kevinbatdorf/fglt:latest
+    container_name: fglt-syncer
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
+      SYNC_CRON: '0 6 * * *'
+    # Sync no-ops until STEAM_API_KEY + STEAM_ID are set in the UI; the
+    # next cron tick (or the user's manual "Sync Steam now" click) does
+    # the actual fetch.
+    command: sh -c 'bun run /app/scripts/sync-owned.ts || true; echo "$$SYNC_CRON /usr/local/bin/bun run /app/scripts/sync-owned.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  enricher:
+    image: ghcr.io/kevinbatdorf/fglt:latest
+    container_name: fglt-enricher
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
+      ENRICH_BATCH: '50'
+      ENRICH_CRON: '*/15 * * * *'
+    command: sh -c 'bun run /app/scripts/enrich.ts || true; bun run /app/scripts/embed.ts || true; printf "%s\n" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/enrich.ts" "$$ENRICH_CRON /usr/local/bin/bun run /app/scripts/embed.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  steamspy-refresher:
+    image: ghcr.io/kevinbatdorf/fglt:latest
+    container_name: fglt-steamspy-refresher
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
+      STEAMSPY_BATCH: '500'
+      STEAMSPY_DELAY_MS: '1100'
+      STEAMSPY_REFRESH_DAYS: '7'
+      STEAMSPY_CRON: '0 5 * * *'
+    command: sh -c 'bun run /app/scripts/refresh-steamspy.ts || true; echo "$$STEAMSPY_CRON /usr/local/bin/bun run /app/scripts/refresh-steamspy.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  youtube-syncer:
+    image: ghcr.io/kevinbatdorf/fglt:latest
+    container_name: fglt-youtube-syncer
+    environment:
+      DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
+      YOUTUBE_BATCH: '90'
+      YOUTUBE_PER_GAME: '10'
+      YOUTUBE_DELAY_MS: '300'
+      YOUTUBE_CRON: '30 6 * * *'
+    command: sh -c 'bun run /app/scripts/sync-youtube.ts || true; echo "$$YOUTUBE_CRON /usr/local/bin/bun run /app/scripts/sync-youtube.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+volumes:
+  fglt-pgdata:

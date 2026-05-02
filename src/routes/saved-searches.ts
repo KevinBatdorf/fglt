@@ -34,7 +34,8 @@ export function savedSearchesRoutes(raw: postgres.Sql) {
 		const where = conds.reduce((acc, cond, i) =>
 			i === 0 ? cond : raw`${acc} AND ${cond}`,
 		);
-		const [row] = await raw`SELECT COUNT(*)::int AS n FROM games g WHERE ${where}`;
+		const [row] =
+			await raw`SELECT COUNT(*)::int AS n FROM games g WHERE ${where}`;
 		const count = (row?.n as number) ?? 0;
 		countCache.set(cacheKey, { count, expires: Date.now() + COUNT_TTL_MS });
 		return count;

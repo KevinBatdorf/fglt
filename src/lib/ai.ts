@@ -33,16 +33,13 @@ async function resolve(): Promise<ResolvedAI> {
 	const rawBase = c.AI_BASE_URL?.trim();
 	const ollamaUrl = c.OLLAMA_URL?.trim();
 	const baseUrl =
-		rawBase ||
-		(ollamaUrl ? `${ollamaUrl.replace(/\/$/, '')}/v1` : '');
+		rawBase || (ollamaUrl ? `${ollamaUrl.replace(/\/$/, '')}/v1` : '');
 	return {
 		baseUrl,
 		apiKey: c.AI_API_KEY?.trim() || 'unused-but-required',
 		providerName: c.AI_PROVIDER_NAME?.trim() || 'openai-compatible',
 		chatModel:
-			c.AI_CHAT_MODEL?.trim() ||
-			c.OLLAMA_CHAT_MODEL?.trim() ||
-			'qwen3:14b',
+			c.AI_CHAT_MODEL?.trim() || c.OLLAMA_CHAT_MODEL?.trim() || 'qwen3:14b',
 		embedModel:
 			c.AI_EMBED_MODEL?.trim() ||
 			c.OLLAMA_EMBED_MODEL?.trim() ||

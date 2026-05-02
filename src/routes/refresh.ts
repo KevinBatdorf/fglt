@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import type postgres from 'postgres';
 import {
 	isOpenCriticEnabled,
-	openCriticDisabledReason,
 	OpenCriticRateLimitError,
+	openCriticDisabledReason,
 } from '../lib/opencritic';
 import {
 	buildSearchQuery,
@@ -56,7 +56,8 @@ export function refreshRoutes(raw: postgres.Sql) {
 		const name = game.name as string;
 
 		const sources: Record<string, { status: string; detail?: unknown }> = {};
-		const wants = (s: Exclude<Source, 'all'>) => source === 'all' || source === s;
+		const wants = (s: Exclude<Source, 'all'>) =>
+			source === 'all' || source === s;
 
 		// Steam appdetails — re-pull description, header_image, screenshots,
 		// metacritic, tags, similar graph, HLTB. Does NOT include reviews or

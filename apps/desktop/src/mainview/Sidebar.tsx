@@ -11,8 +11,8 @@ import {
 import {
 	getSidebarVisibility,
 	type SidebarKey,
-	setSidebarVisibility,
 	type SidebarVisibility,
+	setSidebarVisibility,
 } from './lib/prefs';
 
 export type View =
@@ -33,6 +33,7 @@ export type View =
 	| { kind: 'saved_search'; slug: string }
 	| { kind: 'recently_viewed' }
 	| { kind: 'settings' }
+	| { kind: 'setup_guide' }
 	| { kind: 'detail'; appid: number };
 
 interface Props {
@@ -41,15 +42,33 @@ interface Props {
 	recentSearches: string[];
 	onClearRecent: () => void;
 	platformCounts: Partial<Record<Platform, number>>;
+	/**
+	 * When true, every nav item except Settings and Setup guide is
+	 * click-disabled and visually dimmed. Set when required config is
+	 * missing OR the API is unreachable — the app can't actually do
+	 * anything useful in those states, so we surface that.
+	 */
+	locked?: boolean;
 }
 
 export function Sidebar({
 	view,
-	onNavigate,
+	onNavigate: navigateRaw,
 	recentSearches,
 	onClearRecent,
 	platformCounts,
+	locked = false,
 }: Props) {
+	// Wrap the parent-supplied navigate so we can intercept clicks while
+	// the app is locked. Settings + Setup guide always go through; every
+	// other destination is dropped on the floor (the visual disable below
+	// makes that obvious to the user).
+	const onNavigate = (next: View) => {
+		if (locked && next.kind !== 'settings' && next.kind !== 'setup_guide') {
+			return;
+		}
+		navigateRaw(next);
+	};
 	const [lists, setLists] = useState<ListSummary[] | null>(null);
 	const [savedSearches, setSavedSearches] = useState<
 		SavedSearchSummary[] | null
@@ -238,24 +257,31 @@ export function Sidebar({
 		}
 	}
 
+	// Render every nav button via this wrapper so the lockout `disabled`
+	// prop can flip the whole sidebar in one place. (Settings is rendered
+	// directly with its own button below.)
+	const Item = (props: Omit<Parameters<typeof NavItem>[0], 'disabled'>) => (
+		<NavItem {...props} disabled={locked} />
+	);
+
 	return (
 		<aside className="w-56 shrink-0 self-stretch border-r border-zinc-800 bg-zinc-925 flex flex-col">
 			<nav className="flex-1 overflow-y-auto py-3">
 				<Section title="Library">
-					<NavItem
+					<Item
 						active={view.kind === 'home'}
 						onClick={() => onNavigate({ kind: 'home' })}
 						icon="🏠"
 						label="Home"
 					/>
-					<NavItem
+					<Item
 						active={view.kind === 'filter' && view.what === 'all'}
 						onClick={() => onNavigate({ kind: 'filter', what: 'all' })}
 						icon="📚"
 						label="All games"
 					/>
 					{vis.trending && (
-						<NavItem
+						<Item
 							active={view.kind === 'discover' && view.what === 'trending'}
 							onClick={() => onNavigate({ kind: 'discover', what: 'trending' })}
 							onContextMenu={navHideContextMenu(
@@ -268,7 +294,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.recommended && (
-						<NavItem
+						<Item
 							active={view.kind === 'discover' && view.what === 'recommended'}
 							onClick={() =>
 								onNavigate({ kind: 'discover', what: 'recommended' })
@@ -283,7 +309,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.random && (
-						<NavItem
+						<Item
 							active={view.kind === 'discover' && view.what === 'random'}
 							onClick={() => onNavigate({ kind: 'discover', what: 'random' })}
 							onContextMenu={navHideContextMenu(
@@ -296,7 +322,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.unplayed && (
-						<NavItem
+						<Item
 							active={view.kind === 'filter' && view.what === 'unplayed'}
 							onClick={() => onNavigate({ kind: 'filter', what: 'unplayed' })}
 							onContextMenu={navHideContextMenu(
@@ -309,7 +335,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.weekend && (
-						<NavItem
+						<Item
 							active={view.kind === 'filter' && view.what === 'weekend'}
 							onClick={() => onNavigate({ kind: 'filter', what: 'weekend' })}
 							onContextMenu={navHideContextMenu(
@@ -322,7 +348,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.recently_played && (
-						<NavItem
+						<Item
 							active={view.kind === 'filter' && view.what === 'recently_played'}
 							onClick={() =>
 								onNavigate({ kind: 'filter', what: 'recently_played' })
@@ -337,7 +363,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.recently_added && (
-						<NavItem
+						<Item
 							active={view.kind === 'filter' && view.what === 'recently_added'}
 							onClick={() =>
 								onNavigate({ kind: 'filter', what: 'recently_added' })
@@ -352,7 +378,7 @@ export function Sidebar({
 						/>
 					)}
 					{vis.recently_viewed && (
-						<NavItem
+						<Item
 							active={view.kind === 'recently_viewed'}
 							onClick={() => onNavigate({ kind: 'recently_viewed' })}
 							onContextMenu={navHideContextMenu(
@@ -372,7 +398,7 @@ export function Sidebar({
 							const active =
 								view.kind === 'saved_search' && view.slug === s.slug;
 							return (
-								<NavItem
+								<Item
 									key={s.id}
 									active={active}
 									onClick={() =>
@@ -398,7 +424,7 @@ export function Sidebar({
 				{vis.platforms && (
 					<Section title="Platforms">
 						{(['steam', 'epic', 'gog'] as Platform[]).map((p) => (
-							<NavItem
+							<Item
 								key={p}
 								active={view.kind === 'platform' && view.platform === p}
 								onClick={() => onNavigate({ kind: 'platform', platform: p })}
@@ -466,8 +492,7 @@ export function Sidebar({
 												}
 											}}
 											onBlur={() => {
-												if (renameValue.trim())
-													void handleRenameSubmit(l);
+												if (renameValue.trim()) void handleRenameSubmit(l);
 												else setRenamingListId(null);
 											}}
 											placeholder="List name (emoji prefix sets icon)"
@@ -477,7 +502,7 @@ export function Sidebar({
 								);
 							}
 							return (
-								<NavItem
+								<Item
 									key={l.id}
 									active={active}
 									onClick={() => onNavigate({ kind: 'list', slug: l.slug })}
@@ -517,7 +542,7 @@ export function Sidebar({
 							const isPrompting = savePrompt?.query === q;
 							return (
 								<div key={q}>
-									<NavItem
+									<Item
 										active={active}
 										onClick={() => onNavigate({ kind: 'search', query: q })}
 										onContextMenu={(e) => {
@@ -736,7 +761,9 @@ function splitLeadingEmoji(s: string): {
 	emoji: string | undefined;
 	name: string;
 } {
-	const m = s.match(/^(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?)\s+(.+)$/u);
+	const m = s.match(
+		/^(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?)\s+(.+)$/u,
+	);
 	if (m) return { emoji: m[1], name: m[2].trim() };
 	return { emoji: undefined, name: s };
 }
@@ -745,7 +772,12 @@ function splitLeadingEmoji(s: string): {
 function navHideContextMenu(
 	key: SidebarKey,
 	label: string,
-	setMenu: (m: { x: number; y: number; key: SidebarKey; label: string }) => void,
+	setMenu: (m: {
+		x: number;
+		y: number;
+		key: SidebarKey;
+		label: string;
+	}) => void,
 ) {
 	return (e: React.MouseEvent<HTMLButtonElement>) => {
 		e.preventDefault();
@@ -761,6 +793,7 @@ function NavItem({
 	icon,
 	label,
 	count,
+	disabled = false,
 }: {
 	active: boolean;
 	onClick: () => void;
@@ -768,16 +801,21 @@ function NavItem({
 	icon: string | null;
 	label: string;
 	count?: number;
+	disabled?: boolean;
 }) {
 	return (
 		<button
 			type="button"
-			onClick={onClick}
-			onContextMenu={onContextMenu}
+			onClick={disabled ? undefined : onClick}
+			onContextMenu={disabled ? undefined : onContextMenu}
+			disabled={disabled}
+			title={disabled ? 'Set required keys in Settings to unlock' : undefined}
 			className={`w-full h-8 px-3 flex items-center gap-2.5 text-sm text-left transition-colors ${
-				active
-					? 'bg-zinc-800 text-zinc-100'
-					: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+				disabled
+					? 'opacity-40 cursor-not-allowed text-zinc-500'
+					: active
+						? 'bg-zinc-800 text-zinc-100'
+						: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
 			}`}
 		>
 			{icon !== null && (

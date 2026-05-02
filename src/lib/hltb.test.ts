@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-	fetchCalls,
-	installMockFetch,
-	jsonResponse,
-} from './_test/mockFetch';
+import { fetchCalls, installMockFetch, jsonResponse } from './_test/mockFetch';
 import {
 	__resetHLTBStateForTests,
 	fetchHLTB,
@@ -102,8 +98,7 @@ describe('fetchHLTB', () => {
 	test('throws HLTBRateLimitError on 429 from /api/find', async () => {
 		restore = installMockFetch((url) => {
 			if (url.includes('/api/find/init')) return jsonResponse(initBody);
-			if (url.endsWith('/api/find'))
-				return new Response('', { status: 429 });
+			if (url.endsWith('/api/find')) return new Response('', { status: 429 });
 			return new Response('', { status: 404 });
 		});
 		expect(fetchHLTB('Anything')).rejects.toBeInstanceOf(HLTBRateLimitError);

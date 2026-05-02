@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import { GameImage } from './GameImage';
+import { useEffect, useMemo, useState } from 'react';
 import type { UpdaterStatus } from '../shared/types';
+import { GameImage } from './GameImage';
 import {
 	type ActivityResponse,
 	api,
+	type ConfigKey,
 	type HealthStatus,
+	notifyConfigChanged,
 	type Stats,
 } from './lib/api';
-import { rpc } from './lib/rpc';
 import {
 	CARDS_PER_ROW_MAX,
 	CARDS_PER_ROW_MIN,
@@ -30,14 +31,27 @@ import {
 	VIBES_COUNT_MAX,
 	VIBES_COUNT_MIN,
 } from './lib/prefs';
+import { rpc } from './lib/rpc';
 
 interface Props {
 	stats: Stats | null;
 	onStatsRefresh: () => void;
 	onSelect: (appid: number) => void;
+	/**
+	 * When true, the app is locked into Settings because required config
+	 * (STEAM_API_KEY / STEAM_ID) is missing. Surfaces an amber callout at
+	 * the top of ConfigurationSection. The lock auto-releases as soon as
+	 * the next /health poll sees the values set.
+	 */
+	requiredMissing?: string[];
 }
 
-export function Settings({ stats, onStatsRefresh, onSelect }: Props) {
+export function Settings({
+	stats,
+	onStatsRefresh,
+	onSelect,
+	requiredMissing = [],
+}: Props) {
 	const [activity, setActivity] = useState<ActivityResponse | null>(null);
 	const [activityErr, setActivityErr] = useState<string | null>(null);
 	const [syncing, setSyncing] = useState(false);
@@ -114,6 +128,8 @@ export function Settings({ stats, onStatsRefresh, onSelect }: Props) {
 			</header>
 
 			<SystemStatusSection />
+
+			<ConfigurationSection requiredMissing={requiredMissing} />
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
@@ -692,11 +708,7 @@ function SystemStatusSection() {
 					{rows.map((r) => (
 						<div key={r.label} className="grid grid-cols-[140px_1fr] gap-2">
 							<dt className="text-zinc-500">{r.label}</dt>
-							<dd
-								className={
-									r.ok ? 'text-emerald-300' : 'text-amber-300'
-								}
-							>
+							<dd className={r.ok ? 'text-emerald-300' : 'text-amber-300'}>
 								<span aria-hidden className="mr-1.5">
 									{r.ok ? '✓' : '✗'}
 								</span>
@@ -712,6 +724,384 @@ function SystemStatusSection() {
 }
 
 /**
+ * Configuration form — every key lives in the `app_settings` table and is
+ * read by `getConfig()` on the server. Loaded values come back masked for
+ * sensitive keys (••••<last4>); click-to-reveal refetches with reveal=1.
+ *
+ * UX rules:
+ * - Empty input means "delete the row" (treat unset and empty the same).
+ * - We diff against the last-loaded values so Save only POSTs what changed.
+ * - When `requiredMissing` is non-empty, an amber callout pins to the top
+ *   and the matching field labels glow amber. Saving the missing keys
+ *   triggers `seg:config:changed`, which the App listens for to recompute
+ *   /health immediately instead of waiting on the 30s poll.
+ */
+function ConfigurationSection({
+	requiredMissing,
+}: {
+	requiredMissing: string[];
+}) {
+	// Loaded snapshot — what the server most recently returned. Sensitive
+	// values arrive masked unless the user clicked Reveal on that field.
+	const [loaded, setLoaded] = useState<Partial<
+		Record<ConfigKey, string>
+	> | null>(null);
+	// What the user has typed. Only fields the user touched live here.
+	const [draft, setDraft] = useState<Partial<Record<ConfigKey, string>>>({});
+	const [revealed, setRevealed] = useState<Set<ConfigKey>>(new Set());
+	const [saving, setSaving] = useState(false);
+	const [savedAt, setSavedAt] = useState<Date | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	async function load(reveal = false) {
+		try {
+			const r = await api.config(reveal);
+			setLoaded((prev) => ({ ...(prev ?? {}), ...r.config }));
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		}
+	}
+
+	useEffect(() => {
+		void load(false);
+	}, []);
+
+	async function reveal(key: ConfigKey) {
+		// Pull JUST the revealed value via a single targeted refetch with
+		// reveal=1. We then strip every other sensitive value back to its
+		// masked form so revealing one key doesn't accidentally expose all.
+		try {
+			const r = await api.config(true);
+			setLoaded((prev) => {
+				const next: Partial<Record<ConfigKey, string>> = { ...(prev ?? {}) };
+				next[key] = r.config[key];
+				return next;
+			});
+			setRevealed((prev) => new Set(prev).add(key));
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		}
+	}
+
+	async function save() {
+		if (!loaded) return;
+		setSaving(true);
+		setError(null);
+		try {
+			// Build the diff: any draft entry whose value differs from the
+			// loaded snapshot. For sensitive keys we only include the change
+			// if the user explicitly typed something (ignore re-saves of the
+			// "••••6122" placeholder).
+			const updates: Partial<Record<ConfigKey, string>> = {};
+			for (const [k, v] of Object.entries(draft) as [ConfigKey, string][]) {
+				const cur = loaded[k] ?? '';
+				if (v === cur) continue;
+				if (SENSITIVE.has(k) && isMaskedValue(v)) continue;
+				updates[k] = v;
+			}
+			if (Object.keys(updates).length === 0) {
+				setSavedAt(new Date());
+				setSaving(false);
+				return;
+			}
+			await api.saveConfig(updates);
+			notifyConfigChanged();
+			setDraft({});
+			setRevealed(new Set());
+			await load(false);
+			setSavedAt(new Date());
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	const dirty = useMemo(() => {
+		if (!loaded) return false;
+		for (const [k, v] of Object.entries(draft) as [ConfigKey, string][]) {
+			const cur = loaded[k] ?? '';
+			if (v !== cur && !(SENSITIVE.has(k) && isMaskedValue(v))) return true;
+		}
+		return false;
+	}, [draft, loaded]);
+
+	function valueFor(key: ConfigKey): string {
+		if (key in draft) return draft[key] ?? '';
+		return loaded?.[key] ?? '';
+	}
+
+	function setValueFor(key: ConfigKey, v: string) {
+		setDraft((prev) => ({ ...prev, [key]: v }));
+	}
+
+	const fieldProps = {
+		valueFor,
+		setValueFor,
+		revealed,
+		onReveal: reveal,
+		requiredMissing,
+	};
+
+	return (
+		<section className="space-y-4">
+			<div>
+				<h2 className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">
+					Configuration
+				</h2>
+				{requiredMissing.length > 0 && (
+					<div className="mb-3 rounded-md border border-amber-700 bg-amber-950/60 px-3 py-2 text-xs text-amber-100">
+						<strong>Set these to continue:</strong> {requiredMissing.join(', ')}
+						. The rest of the app stays locked until both are filled in.
+					</div>
+				)}
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
+					<FieldGroup
+						title="Required"
+						subtitle="Library sync needs both. Get the API key from Steam's dev portal; the 64-bit Steam ID from steamid.io."
+					>
+						<ConfigField
+							{...fieldProps}
+							keyName="STEAM_API_KEY"
+							label="Steam API key"
+							sensitive
+							placeholder="32-char hex string"
+							helpUrl="https://steamcommunity.com/dev/apikey"
+							helpUrlLabel="Get one"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="STEAM_ID"
+							label="Steam ID (64-bit)"
+							placeholder="76561198…"
+							helpUrl="https://steamid.io/"
+							helpUrlLabel="Find yours"
+						/>
+					</FieldGroup>
+
+					<FieldGroup
+						title="AI provider (optional)"
+						subtitle="Any OpenAI-compatible endpoint. Leave blank for the default Ollama at host.docker.internal:11434. Without an AI provider, hybrid search and vibe-chips fall back to keyword-only / static."
+					>
+						<ConfigField
+							{...fieldProps}
+							keyName="AI_BASE_URL"
+							label="AI base URL"
+							placeholder="https://api.openai.com/v1"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="AI_API_KEY"
+							label="AI API key"
+							sensitive
+							placeholder="sk-…"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="AI_PROVIDER_NAME"
+							label="AI provider name"
+							placeholder="openai (only used for display)"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="AI_CHAT_MODEL"
+							label="Chat model"
+							placeholder="qwen3:14b"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="AI_EMBED_MODEL"
+							label="Embed model"
+							placeholder="nomic-embed-text"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="OLLAMA_URL"
+							label="Ollama URL"
+							placeholder="http://host.docker.internal:11434"
+						/>
+					</FieldGroup>
+
+					<FieldGroup
+						title="Enrichment (optional)"
+						subtitle="External score / metadata sources. Each is opt-in — the library is fully usable without them. YouTube uses Google's free 10k unit/day quota; OpenCritic goes through RapidAPI."
+					>
+						<ConfigField
+							{...fieldProps}
+							keyName="YOUTUBE_API_KEY"
+							label="YouTube API key"
+							sensitive
+							placeholder="AIza…"
+							helpUrl="https://console.cloud.google.com/apis/credentials"
+							helpUrlLabel="Create"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="OPENCRITIC_API_KEY"
+							label="OpenCritic (RapidAPI) key"
+							sensitive
+							placeholder="RapidAPI key"
+							helpUrl="https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api"
+							helpUrlLabel="Sign up"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="HLTB_DAILY_BUDGET"
+							label="HowLongToBeat daily budget"
+							placeholder="80"
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="OPENCRITIC_DAILY_BUDGET"
+							label="OpenCritic daily budget"
+							placeholder="20"
+						/>
+					</FieldGroup>
+				</div>
+
+				<div className="mt-3 flex items-center gap-3">
+					<button
+						type="button"
+						onClick={() => void save()}
+						disabled={saving || !dirty}
+						className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{saving ? 'Saving…' : 'Save'}
+					</button>
+					{!dirty && savedAt && !error && (
+						<span className="text-xs text-zinc-500">
+							Saved {savedAt.toLocaleTimeString()}
+						</span>
+					)}
+					{error && <span className="text-xs text-red-400">{error}</span>}
+					{dirty && !error && (
+						<span className="text-xs text-zinc-500">Unsaved changes</span>
+					)}
+				</div>
+			</div>
+		</section>
+	);
+}
+
+const SENSITIVE: ReadonlySet<ConfigKey> = new Set([
+	'STEAM_API_KEY',
+	'OPENCRITIC_API_KEY',
+	'YOUTUBE_API_KEY',
+	'AI_API_KEY',
+]);
+
+function isMaskedValue(v: string): boolean {
+	// Server returns "••••" or "••••<last4>" for sensitive masked values.
+	return v.startsWith('••••');
+}
+
+function FieldGroup({
+	title,
+	subtitle,
+	children,
+}: {
+	title: string;
+	subtitle?: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="p-4 space-y-3">
+			<div>
+				<div className="text-sm font-medium text-zinc-200">{title}</div>
+				{subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
+			</div>
+			<div className="space-y-2">{children}</div>
+		</div>
+	);
+}
+
+function ConfigField({
+	keyName,
+	label,
+	placeholder,
+	sensitive = false,
+	helpUrl,
+	helpUrlLabel,
+	valueFor,
+	setValueFor,
+	revealed,
+	onReveal,
+	requiredMissing,
+}: {
+	keyName: ConfigKey;
+	label: string;
+	placeholder?: string;
+	sensitive?: boolean;
+	helpUrl?: string;
+	helpUrlLabel?: string;
+	valueFor: (k: ConfigKey) => string;
+	setValueFor: (k: ConfigKey, v: string) => void;
+	revealed: Set<ConfigKey>;
+	onReveal: (k: ConfigKey) => Promise<void>;
+	requiredMissing: string[];
+}) {
+	const value = valueFor(keyName);
+	const isMissing = requiredMissing.includes(keyName);
+	const isSensitiveMasked =
+		sensitive && isMaskedValue(value) && !revealed.has(keyName);
+	return (
+		<div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2 sm:items-center">
+			<label
+				htmlFor={`cfg-${keyName}`}
+				className={`text-xs ${isMissing ? 'text-amber-300' : 'text-zinc-400'}`}
+				title={keyName}
+			>
+				{label}
+			</label>
+			<div className="flex items-center gap-1.5">
+				<input
+					id={`cfg-${keyName}`}
+					type={isSensitiveMasked ? 'password' : 'text'}
+					value={value}
+					placeholder={placeholder}
+					onChange={(e) => setValueFor(keyName, e.target.value)}
+					onFocus={(e) => {
+						// Clicking into a masked field clears the placeholder
+						// dots so the user types into an empty box, not into
+						// "••••6122". They can still cancel by blurring without
+						// typing.
+						if (isSensitiveMasked) {
+							setValueFor(keyName, '');
+							e.target.type = 'text';
+						}
+					}}
+					className={`flex-1 min-w-0 bg-zinc-950 border rounded px-2 py-1 text-sm font-mono focus:outline-none ${
+						isMissing
+							? 'border-amber-700 focus:border-amber-500'
+							: 'border-zinc-800 focus:border-zinc-600'
+					}`}
+				/>
+				{sensitive && value && isMaskedValue(value) && (
+					<button
+						type="button"
+						onClick={() => void onReveal(keyName)}
+						title="Reveal current value"
+						className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 px-1.5"
+					>
+						Reveal
+					</button>
+				)}
+				{helpUrl && (
+					<button
+						type="button"
+						onClick={() => void rpc.request.openUrl({ url: helpUrl })}
+						title={helpUrl}
+						className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 px-1.5"
+					>
+						{helpUrlLabel ?? 'Help'} ↗
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/**
  * Settings → Updates: shows current version, last check, and lets the
  * user force an immediate check. The actual update polling is driven by
  * the bun side (see startUpdaterPolling in src/bun/rpc.ts).
@@ -721,7 +1111,10 @@ function UpdatesSubsection() {
 	const [busy, setBusy] = useState(false);
 
 	useEffect(() => {
-		void rpc.request.updaterStatus({}).then(setU).catch(() => setU(null));
+		void rpc.request
+			.updaterStatus({})
+			.then(setU)
+			.catch(() => setU(null));
 	}, []);
 
 	async function checkNow() {
@@ -745,7 +1138,9 @@ function UpdatesSubsection() {
 		{ label: 'Current version', value: u?.currentVersion ?? '—' },
 		{
 			label: 'Last check',
-			value: u?.lastChecked ? new Date(u.lastChecked).toLocaleString() : 'Never',
+			value: u?.lastChecked
+				? new Date(u.lastChecked).toLocaleString()
+				: 'Never',
 		},
 		{
 			label: 'Status',

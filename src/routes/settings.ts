@@ -108,7 +108,11 @@ export function settingsRoutes(raw: postgres.Sql) {
 		// see the new values immediately. Other processes (cron containers)
 		// will pick them up on their own 5s TTL.
 		invalidateConfig();
-		return c.json({ ok: true, updated: updates.length, deleted: deletes.length });
+		return c.json({
+			ok: true,
+			updated: updates.length,
+			deleted: deletes.length,
+		});
 	});
 
 	app.get('/genres', async (c) => {
