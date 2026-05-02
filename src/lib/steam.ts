@@ -4,9 +4,7 @@
  *   - GetOwnedGames: https://partner.steamgames.com/doc/webapi/IPlayerService
  *   - appdetails:    https://wiki.teamfortress.com/wiki/User:RJackson/StorefrontAPI#appdetails
  */
-
-const STEAM_API_KEY = process.env.STEAM_API_KEY || '';
-const STEAM_ID = process.env.STEAM_ID || '';
+import { getConfig } from './config';
 
 export interface OwnedGame {
 	appid: number;
@@ -18,13 +16,14 @@ export interface OwnedGame {
 }
 
 export async function fetchOwnedGames(): Promise<OwnedGame[]> {
-	if (!STEAM_API_KEY) throw new Error('STEAM_API_KEY not set');
-	if (!STEAM_ID) throw new Error('STEAM_ID not set');
+	const cfg = await getConfig();
+	if (!cfg.STEAM_API_KEY) throw new Error('STEAM_API_KEY not set');
+	if (!cfg.STEAM_ID) throw new Error('STEAM_ID not set');
 	const url = new URL(
 		'https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/',
 	);
-	url.searchParams.set('key', STEAM_API_KEY);
-	url.searchParams.set('steamid', STEAM_ID);
+	url.searchParams.set('key', cfg.STEAM_API_KEY);
+	url.searchParams.set('steamid', cfg.STEAM_ID);
 	url.searchParams.set('include_appinfo', '1');
 	url.searchParams.set('include_played_free_games', '1');
 	url.searchParams.set('format', 'json');

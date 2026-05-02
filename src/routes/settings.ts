@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
+import {
+	type AppConfig,
+	CONFIG_KEYS,
+	getConfig,
+	invalidateConfig,
+	SENSITIVE_KEYS,
+} from '../lib/config';
 
 /**
  * Per-instance settings backed by the `meta` table. Currently exposes
@@ -40,6 +47,68 @@ export function settingsRoutes(raw: postgres.Sql) {
 			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated = now()
 		`;
 		return c.json({ hidden_genres: cleaned });
+	});
+
+	/**
+	 * GET /settings/config — return the current resolved config map.
+	 * Sensitive values (API keys) are masked by default; pass ?reveal=1
+	 * to get them in plaintext (the desktop UI uses this on click-to-reveal).
+	 */
+	app.get('/settings/config', async (c) => {
+		const reveal = c.req.query('reveal') === '1';
+		const cfg = await getConfig();
+		const out: Record<string, string | undefined> = {};
+		for (const key of CONFIG_KEYS) {
+			const v = cfg[key];
+			if (v === undefined) {
+				out[key] = undefined;
+				continue;
+			}
+			if (!reveal && SENSITIVE_KEYS.has(key)) {
+				// Show only the last 4 chars so the user can verify the right
+				// key is set without exposing it.
+				out[key] = v.length <= 4 ? '••••' : `••••${v.slice(-4)}`;
+			} else {
+				out[key] = v;
+			}
+		}
+		return c.json({ config: out });
+	});
+
+	/**
+	 * POST /settings/config — upsert one or more keys. Body shape:
+	 *   { STEAM_API_KEY: 'abc...', STEAM_ID: '7656...' }
+	 * Empty string deletes the row (treats unset and empty the same).
+	 */
+	app.post('/settings/config', async (c) => {
+		const body = (await c.req.json().catch(() => ({}))) as Partial<
+			Record<keyof AppConfig, string>
+		>;
+		const allowed = new Set(CONFIG_KEYS);
+		const updates: Array<{ key: string; value: string }> = [];
+		const deletes: string[] = [];
+		for (const [k, v] of Object.entries(body)) {
+			if (!allowed.has(k as keyof AppConfig)) continue;
+			if (typeof v !== 'string') continue;
+			if (v === '') deletes.push(k);
+			else updates.push({ key: k, value: v });
+		}
+		if (deletes.length > 0) {
+			await raw`DELETE FROM app_settings WHERE key = ANY(${deletes})`;
+		}
+		for (const u of updates) {
+			await raw`
+				INSERT INTO app_settings (key, value, updated_at)
+				VALUES (${u.key}, ${u.value}, now())
+				ON CONFLICT (key) DO UPDATE
+					SET value = EXCLUDED.value, updated_at = now()
+			`;
+		}
+		// Bust the in-process cache so subsequent reads on this API instance
+		// see the new values immediately. Other processes (cron containers)
+		// will pick them up on their own 5s TTL.
+		invalidateConfig();
+		return c.json({ ok: true, updated: updates.length, deleted: deletes.length });
 	});
 
 	app.get('/genres', async (c) => {

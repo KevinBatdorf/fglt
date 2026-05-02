@@ -7,6 +7,7 @@
  * We catch the 403 quotaExceeded error and surface it as a typed error so
  * cron loops can stop cleanly without failing the job.
  */
+import { getConfig } from './config';
 
 const SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
 
@@ -54,8 +55,9 @@ interface SearchResponse {
 	};
 }
 
-export function isYouTubeEnabled(): boolean {
-	return !!process.env.YOUTUBE_API_KEY;
+export async function isYouTubeEnabled(): Promise<boolean> {
+	const cfg = await getConfig();
+	return !!cfg.YOUTUBE_API_KEY;
 }
 
 /**
@@ -69,7 +71,8 @@ export async function searchVideos(
 	query: string,
 	limit = 10,
 ): Promise<YouTubeVideo[]> {
-	const key = process.env.YOUTUBE_API_KEY;
+	const cfg = await getConfig();
+	const key = cfg.YOUTUBE_API_KEY;
 	if (!key) throw new Error('YOUTUBE_API_KEY not set');
 
 	const url = new URL(SEARCH_URL);

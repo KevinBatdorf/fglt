@@ -23,7 +23,7 @@ export function similarRoutes(raw: postgres.Sql) {
 		if (!appid && !q) {
 			return c.json({ error: 'pass ?appid= or ?q=' }, 400);
 		}
-		if (!isOllamaEnabled()) {
+		if (!(await isOllamaEnabled())) {
 			return c.json({ error: 'OLLAMA_URL not configured' }, 503);
 		}
 

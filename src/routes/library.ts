@@ -25,7 +25,8 @@ export function libraryRoutes(raw: postgres.Sql) {
 		const offset = Math.max(0, num(c.req.query('offset')) ?? 0);
 		const sort = c.req.query('sort') || (q ? 'relevance' : 'name');
 
-		const useVector = q.length > 0 && isOllamaEnabled() && sort !== 'name';
+		const useVector =
+			q.length > 0 && (await isOllamaEnabled()) && sort !== 'name';
 		let vec: string | null = null;
 		if (useVector) {
 			try {

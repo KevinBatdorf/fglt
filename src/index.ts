@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { raw } from './db';
+import { getConfig } from './lib/config';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
 import { activityRoutes } from './routes/activity';
@@ -48,11 +49,11 @@ app.route('/', vibesRoutes(raw));
 app.route('/', settingsRoutes(raw));
 mcpRoutes(app);
 
-app.get('/', (c) =>
+app.get('/', async (c) =>
 	c.json({
 		name: 'Steam Library API',
-		ollama: isOllamaEnabled(),
-		youtube: isYouTubeEnabled(),
+		ollama: await isOllamaEnabled(),
+		youtube: await isYouTubeEnabled(),
 		endpoints: [
 			'GET  /library?q=&tag=&genre=&platform=&min_playtime=&max_playtime=&unplayed=1&limit=&offset=',
 			'GET  /games/:appid',
@@ -92,13 +93,19 @@ app.get('/health', async (c) => {
 		dbOk = false;
 	}
 
+	const cfg = await getConfig();
+	const required: string[] = [];
+	if (!cfg.STEAM_API_KEY) required.push('STEAM_API_KEY');
+	if (!cfg.STEAM_ID) required.push('STEAM_ID');
+
 	return c.json({
 		db: dbOk ? 'ok' : 'down',
-		ai: isOllamaEnabled() || !!process.env.AI_BASE_URL ? 'ok' : 'disabled',
-		steam_key: process.env.STEAM_API_KEY ? 'present' : 'missing',
-		steam_id: process.env.STEAM_ID ? 'present' : 'missing',
+		ai: (await isOllamaEnabled()) ? 'ok' : 'disabled',
+		steam_key: cfg.STEAM_API_KEY ? 'present' : 'missing',
+		steam_id: cfg.STEAM_ID ? 'present' : 'missing',
 		total_games: totalGames,
 		last_sync: lastSync,
+		required_missing: required,
 	});
 });
 

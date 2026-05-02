@@ -12,6 +12,7 @@
  *    no-op. UI surfaces a clear "needs RapidAPI key" placeholder so the
  *    user knows the gap is config, not data.
  */
+import { getConfig } from './config';
 
 const RAPIDAPI_HOST = 'opencritic-api.p.rapidapi.com';
 
@@ -62,13 +63,14 @@ interface GameResp {
 	url?: string;
 }
 
-function apiKey(): string | undefined {
-	return process.env.OPENCRITIC_API_KEY?.trim() || undefined;
+async function apiKey(): Promise<string | undefined> {
+	const cfg = await getConfig();
+	return cfg.OPENCRITIC_API_KEY?.trim() || undefined;
 }
 
-export function isOpenCriticEnabled(): boolean {
+export async function isOpenCriticEnabled(): Promise<boolean> {
 	if (process.env.OPENCRITIC_ENABLED === 'false') return false;
-	return apiKey() !== undefined;
+	return (await apiKey()) !== undefined;
 }
 
 /** Reason why OpenCritic isn't enabled — surfaced via /refresh when source='opencritic'. */
@@ -76,7 +78,7 @@ export function openCriticDisabledReason(): string {
 	if (process.env.OPENCRITIC_ENABLED === 'false') {
 		return 'OpenCritic explicitly disabled via OPENCRITIC_ENABLED=false';
 	}
-	return 'OpenCritic requires a RapidAPI key (set OPENCRITIC_API_KEY env var)';
+	return 'OpenCritic requires a RapidAPI key (set it in Settings → Configuration)';
 }
 
 // Module-level rate-limit handling. Resets per process so the cron's
@@ -84,23 +86,30 @@ export function openCriticDisabledReason(): string {
 let rateLimitedUntilProcessExit = false;
 let successesThisProcess = 0;
 
-const DAILY_BUDGET = Number.parseInt(
-	process.env.OPENCRITIC_DAILY_BUDGET ?? '20',
-	10,
-);
+async function dailyBudget(): Promise<number> {
+	const cfg = await getConfig();
+	return Number.parseInt(cfg.OPENCRITIC_DAILY_BUDGET ?? '20', 10);
+}
 
 export function isOpenCriticRateLimited(): boolean {
 	return rateLimitedUntilProcessExit;
 }
 
+/** Test-only: reset module state between tests. */
+export function __resetOpenCriticStateForTests(): void {
+	rateLimitedUntilProcessExit = false;
+	successesThisProcess = 0;
+}
+
 async function get<T>(path: string): Promise<T | null> {
-	const key = apiKey();
+	const key = await apiKey();
 	if (!key) throw new Error(openCriticDisabledReason());
 	if (rateLimitedUntilProcessExit) throw new OpenCriticRateLimitError();
-	if (successesThisProcess >= DAILY_BUDGET) {
+	const budget = await dailyBudget();
+	if (successesThisProcess >= budget) {
 		rateLimitedUntilProcessExit = true;
 		throw new OpenCriticRateLimitError(
-			`OpenCritic daily budget reached (${DAILY_BUDGET}); leaving headroom for manual /refresh`,
+			`OpenCritic daily budget reached (${budget}); leaving headroom for manual /refresh`,
 		);
 	}
 	const res = await fetch(rapidUrl(path), {

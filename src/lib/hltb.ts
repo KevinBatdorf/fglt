@@ -15,6 +15,7 @@
  *
  * Returns hours for: main story, main+extras, completionist.
  */
+import { getConfig } from './config';
 
 interface HLTBAuth {
 	token: string;
@@ -39,10 +40,10 @@ export class HLTBRateLimitError extends Error {
 let rateLimitedUntilProcessExit = false;
 let successesThisProcess = 0;
 
-const DAILY_BUDGET = Number.parseInt(
-	process.env.HLTB_DAILY_BUDGET ?? '80',
-	10,
-);
+async function dailyBudget(): Promise<number> {
+	const cfg = await getConfig();
+	return Number.parseInt(cfg.HLTB_DAILY_BUDGET ?? '80', 10);
+}
 
 export function isHLTBRateLimited(): boolean {
 	return rateLimitedUntilProcessExit;
@@ -104,10 +105,11 @@ export interface HLTBResult {
 
 export async function fetchHLTB(name: string): Promise<HLTBResult | null> {
 	if (rateLimitedUntilProcessExit) throw new HLTBRateLimitError();
-	if (successesThisProcess >= DAILY_BUDGET) {
+	const budget = await dailyBudget();
+	if (successesThisProcess >= budget) {
 		rateLimitedUntilProcessExit = true;
 		throw new HLTBRateLimitError(
-			`HLTB daily budget reached (${DAILY_BUDGET}); leaving headroom for manual /refresh`,
+			`HLTB daily budget reached (${budget}); leaving headroom for manual /refresh`,
 		);
 	}
 	const auth = await getAuth();

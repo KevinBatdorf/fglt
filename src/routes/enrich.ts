@@ -62,7 +62,8 @@ export function enrichRoutes(raw: postgres.Sql) {
 	});
 
 	app.post('/embed', async (c) => {
-		if (!isOllamaEnabled()) return c.json({ error: 'OLLAMA_URL not set' }, 503);
+		if (!(await isOllamaEnabled()))
+			return c.json({ error: 'OLLAMA_URL not set' }, 503);
 		const limit = clamp(
 			Number.parseInt(c.req.query('limit') ?? '50', 10) || 50,
 			1,
@@ -120,7 +121,7 @@ export async function enrichOne(
 	// OpenCritic critic score — strict free-tier rate limit. The lib sets a
 	// process-wide rate-limit flag on 429 so subsequent calls short-circuit
 	// without burning more requests against the wall.
-	if (isOpenCriticEnabled()) {
+	if (await isOpenCriticEnabled()) {
 		try {
 			await refreshOpenCriticOne(raw, appid);
 		} catch (e) {

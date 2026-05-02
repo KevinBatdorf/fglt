@@ -254,18 +254,20 @@ Return ONLY the JSON object. (regen=${stamp})`;
 export function vibesRoutes(raw: postgres.Sql) {
 	const app = new Hono();
 
-	const respond = (body: CachedVibes & { stale?: boolean }): VibesResponse => ({
+	const respond = async (
+		body: CachedVibes & { stale?: boolean },
+	): Promise<VibesResponse> => ({
 		...body,
-		ai_enabled: isOllamaEnabled(),
+		ai_enabled: await isOllamaEnabled(),
 	});
 
 	app.get('/vibes', async (c) => {
 		// No AI provider configured → just serve the static list, never poke
 		// any background regen. The UI uses ai_enabled to hide the Refresh
 		// button so it can't trigger an empty action.
-		if (!isOllamaEnabled()) {
+		if (!(await isOllamaEnabled())) {
 			return c.json(
-				respond({
+				await respond({
 					vibes: STATIC_DEFAULTS,
 					generated_at: new Date().toISOString(),
 					source: 'static',
@@ -274,22 +276,22 @@ export function vibesRoutes(raw: postgres.Sql) {
 		}
 
 		const cached = await readCache(raw);
-		if (cached && !cacheIsStale(cached)) return c.json(respond(cached));
+		if (cached && !cacheIsStale(cached)) return c.json(await respond(cached));
 
 		void generate(raw)
 			.then((next) => writeCache(raw, next))
 			.catch((e) => console.error('[vibes] background regen failed:', e));
 
-		if (cached) return c.json(respond({ ...cached, stale: true }));
+		if (cached) return c.json(await respond({ ...cached, stale: true }));
 
 		try {
 			const next = await generate(raw);
 			await writeCache(raw, next);
-			return c.json(respond(next));
+			return c.json(await respond(next));
 		} catch (e) {
 			console.error('[vibes] initial generate failed:', e);
 			return c.json(
-				respond({
+				await respond({
 					vibes: STATIC_DEFAULTS,
 					generated_at: new Date().toISOString(),
 					source: 'static',
@@ -299,13 +301,13 @@ export function vibesRoutes(raw: postgres.Sql) {
 	});
 
 	app.post('/vibes/regenerate', async (c) => {
-		if (!isOllamaEnabled()) {
+		if (!(await isOllamaEnabled())) {
 			return c.json({ error: 'AI provider not configured' }, 503);
 		}
 		try {
 			const next = await generate(raw);
 			await writeCache(raw, next);
-			return c.json(respond(next));
+			return c.json(await respond(next));
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'unknown';
 			return c.json({ error: msg }, 502);

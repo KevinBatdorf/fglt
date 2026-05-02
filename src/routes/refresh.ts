@@ -92,7 +92,7 @@ export function refreshRoutes(raw: postgres.Sql) {
 
 		// OpenCritic critic score. Same skip-on-all reasoning as reviews.
 		if (source !== 'all' && wants('opencritic')) {
-			if (isOpenCriticEnabled()) {
+			if (await isOpenCriticEnabled()) {
 				try {
 					const r = await refreshOpenCriticOne(raw, appid);
 					sources.opencritic = r
@@ -118,7 +118,7 @@ export function refreshRoutes(raw: postgres.Sql) {
 
 		// YouTube — search videos, replace stored set
 		if (wants('youtube')) {
-			if (isYouTubeEnabled()) {
+			if (await isYouTubeEnabled()) {
 				try {
 					const query = buildSearchQuery(name);
 					const videos = await searchVideos(query, 10);

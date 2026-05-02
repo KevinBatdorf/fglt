@@ -6,14 +6,19 @@ import {
 } from './_test/mockFetch';
 // Set the API key BEFORE importing the lib so isOpenCriticEnabled() picks it up.
 process.env.OPENCRITIC_API_KEY = 'test-key';
-const { fetchOpenCriticScore, OpenCriticRateLimitError } = await import(
-	'./opencritic'
-);
+const {
+	__resetOpenCriticStateForTests,
+	fetchOpenCriticScore,
+	OpenCriticRateLimitError,
+} = await import('./opencritic');
+const { __resetConfigForTests } = await import('./config');
 
 let restore: () => void = () => {};
 afterEach(() => restore());
 beforeEach(() => {
 	fetchCalls.length = 0;
+	__resetOpenCriticStateForTests();
+	__resetConfigForTests();
 });
 
 const searchHits = [
