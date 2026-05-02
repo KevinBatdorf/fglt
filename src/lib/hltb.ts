@@ -48,6 +48,13 @@ export function isHLTBRateLimited(): boolean {
 	return rateLimitedUntilProcessExit;
 }
 
+/** Test-only: reset cached auth + rate-limit flag between tests. */
+export function __resetHLTBStateForTests(): void {
+	cachedAuth = null;
+	rateLimitedUntilProcessExit = false;
+	successesThisProcess = 0;
+}
+
 // HLTB's anti-bot keys on the literal Origin string their JS sends — and
 // the JS uses the trailing slash form. The browser would normally strip it
 // before sending, but we send what they expect verbatim. Without this,
