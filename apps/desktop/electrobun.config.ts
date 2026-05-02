@@ -2,8 +2,8 @@ import type { ElectrobunConfig } from 'electrobun';
 
 export default {
 	app: {
-		name: 'SEG',
-		identifier: 'seg.kbatdorf.dev',
+		name: 'Find a Game Like That',
+		identifier: 'fglt.kbatdorf.dev',
 		version: '0.1.0',
 	},
 	build: {
@@ -16,12 +16,15 @@ export default {
 		watchIgnore: ['dist/**'],
 		mac: {
 			bundleCEF: false,
+			icons: 'assets/icon.iconset',
 		},
 		linux: {
 			bundleCEF: false,
+			icon: 'assets/icon-512.png',
 		},
 		win: {
 			bundleCEF: false,
+			icon: 'assets/icon.ico',
 		},
 	},
 } satisfies ElectrobunConfig;

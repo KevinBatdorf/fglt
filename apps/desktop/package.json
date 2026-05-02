@@ -1,7 +1,7 @@
 {
-	"name": "seg-desktop",
+	"name": "fglt-desktop",
 	"version": "0.1.0",
-	"description": "SEG — find a game like that. Electrobun desktop UI over a multi-store library API.",
+	"description": "Find a Game Like That — Electrobun desktop UI over a multi-store library API.",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -9,7 +9,9 @@
 		"dev": "electrobun dev --watch",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
 		"hmr": "vite --port 5173",
-		"build:canary": "vite build && electrobun build --env=canary"
+		"build:icons": "bun run scripts/build-icons.ts",
+		"build": "bun run build:icons && vite build && electrobun build --env=stable",
+		"build:canary": "bun run build:icons && vite build && electrobun build --env=canary"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",
@@ -24,7 +26,9 @@
 		"@vitejs/plugin-react": "^4.3.4",
 		"autoprefixer": "^10.4.20",
 		"concurrently": "^9.1.0",
+		"png-to-ico": "^3.0.1",
 		"postcss": "^8.4.49",
+		"sharp": "^0.34.5",
 		"tailwindcss": "^3.4.16",
 		"typescript": "^5.7.2",
 		"vite": "^6.0.3"

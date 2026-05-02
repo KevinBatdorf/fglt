@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: deep zinc-950 with a subtle radial highlight -->
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#27272a"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="180" ry="180" fill="url(#bg)"/>
+  <!-- Subtle inner border for definition -->
+  <rect x="6" y="6" width="1012" height="1012" rx="174" ry="174"
+        fill="none" stroke="#3f3f46" stroke-width="2"/>
+  <!-- Glyph: stylized "F" representing Find -->
+  <g fill="url(#glyph)" transform="translate(280 240)">
+    <rect x="0" y="0" width="120" height="544" rx="20"/>
+    <rect x="0" y="0" width="464" height="120" rx="20"/>
+    <rect x="0" y="208" width="320" height="120" rx="20"/>
+  </g>
+</svg>
