@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { InstalledIndex } from '../shared/types';
 import { GameGrid } from './GameGrid';
 import { GameImage } from './GameImage';
+import { LoadingState } from './LoadingState';
 import { api, type CurateResponse, type LibraryGame } from './lib/api';
 
 interface Props {
@@ -30,22 +31,12 @@ export function Home({ installed, onSelectGame }: Props) {
 			<div className="p-6 text-red-400 text-sm">Curation failed: {error}</div>
 		);
 
-	if (!data)
-		return (
-			<div className="p-6 text-zinc-500 text-sm animate-pulse">
-				Curating your library…
-			</div>
-		);
+	if (!data) return <LoadingState message="Curating your library…" />;
 
 	return (
-		<div className="space-y-7 pb-8 pt-6">
-			{data.game_of_the_day && (
-				<HeroPick
-					game={data.game_of_the_day}
-					onSelect={() => onSelectGame(data.game_of_the_day!.appid)}
-				/>
-			)}
-
+		<div className="space-y-7">
+			{/* Game of the day removed — wasn't a useful pick (deterministic
+			    rotation through a popularity-filtered pool, no personalization). */}
 			{data.continue_playing.length > 0 && (
 				<Section
 					title="Continue playing"
@@ -135,7 +126,7 @@ function HeroPick({
 	const releaseYear = game.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
 	const topGenres = game.genres?.slice(0, 3).join(' / ') ?? '';
 	return (
-		<section className="relative overflow-hidden rounded-xl border border-zinc-800">
+		<section className="relative overflow-hidden rounded-xl border border-zinc-800 min-h-[280px] lg:min-h-[340px]">
 			<div className="absolute inset-0">
 				<GameImage
 					appid={game.appid}
@@ -143,11 +134,14 @@ function HeroPick({
 					alt=""
 					variant="library_hero"
 					fallback={game.header_image}
-					className="w-full h-full object-cover opacity-50"
+					// `object-right` so the right side (where Steam usually
+					// puts the box art / character) stays in frame when the
+					// container narrows. opacity-50 keeps the text readable.
+					className="w-full h-full object-cover object-right opacity-50"
 				/>
-				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-zinc-950/30" />
+				<div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/80 to-zinc-950/20" />
 			</div>
-			<div className="relative px-8 py-10 lg:py-14 max-w-3xl">
+			<div className="relative px-6 py-8 lg:px-8 lg:py-14 max-w-3xl">
 				<div className="text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-bold mb-3">
 					Game of the day
 				</div>

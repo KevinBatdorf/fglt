@@ -15,6 +15,11 @@ interface WindowPrefs {
 
 const PREFS_PATH = join(homedir(), '.seg-window.json');
 
+// Mirror the JS-side resize-edge minimums so a malformed/old prefs file
+// can't restore the window at a too-small size.
+const MIN_W = 900;
+const MIN_H = 600;
+
 async function readWindowPrefs(): Promise<WindowPrefs | null> {
 	try {
 		const file = Bun.file(PREFS_PATH);
@@ -27,7 +32,12 @@ async function readWindowPrefs(): Promise<WindowPrefs | null> {
 			typeof data.height !== 'number'
 		)
 			return null;
-		return data as WindowPrefs;
+		return {
+			x: data.x,
+			y: data.y,
+			width: Math.max(MIN_W, data.width),
+			height: Math.max(MIN_H, data.height),
+		};
 	} catch (e) {
 		console.warn('window prefs read failed:', e);
 		return null;

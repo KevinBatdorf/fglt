@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { InstalledIndex } from '../shared/types';
 import { GameGrid } from './GameGrid';
+import { LoadingState } from './LoadingState';
 import { api, type CurateResponse, type LibraryGame } from './lib/api';
 
 interface Props {
@@ -63,7 +64,7 @@ export function Discover({ what, installed, onSelect }: Props) {
 			</header>
 
 			{error && <div className="text-red-400 text-sm">{error}</div>}
-			{!data && !error && <div className="text-zinc-500 text-sm">Loading…</div>}
+			{!data && !error && <LoadingState />}
 			{data && games.length === 0 && (
 				<div className="text-zinc-500 text-sm">Nothing to show yet.</div>
 			)}

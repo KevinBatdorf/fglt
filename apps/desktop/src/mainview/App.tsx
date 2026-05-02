@@ -3,7 +3,9 @@ import type { InstalledIndex } from '../shared/types';
 import { AllGames } from './AllGames';
 import { Discover } from './Discover';
 import { GameGrid } from './GameGrid';
+import { LoadingState } from './LoadingState';
 import { GameDetail } from './GameDetail';
+import { HealthBanner } from './HealthBanner';
 import { Home } from './Home';
 import { ResizeEdges } from './ResizeEdges';
 import {
@@ -14,6 +16,12 @@ import {
 	type SavedSearchSummary,
 	type Stats,
 } from './lib/api';
+import {
+	clearRecentlyViewed,
+	getRecentlyViewed,
+	type RecentlyViewedEntry,
+	removeFromRecentlyViewed,
+} from './lib/prefs';
 import { getVibesCount, getVibesEnabled } from './lib/prefs';
 import { rpc } from './lib/rpc';
 import { VIBES } from './lib/vibes';
@@ -228,6 +236,7 @@ function App() {
 		<div className="relative h-screen bg-zinc-950 text-zinc-100 flex flex-col border border-zinc-700">
 			<ResizeEdges />
 			<TitleBar title={windowTitle} />
+			<HealthBanner />
 			<div className="flex-1 flex min-h-0">
 				<Sidebar
 					view={view}
@@ -265,6 +274,7 @@ function App() {
 							stats={stats}
 							installed={installed}
 							onSelectGame={open}
+							onOpenList={(slug) => navigate({ kind: 'list', slug })}
 							onPickVibe={(q) => {
 								setQuery(q);
 								navigate({ kind: 'search', query: q });
@@ -314,6 +324,7 @@ const PRESET_LABEL: Record<string, string> = {
 	unplayed: 'Unplayed',
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
+	weekend: 'Weekend games',
 };
 
 const DISCOVER_LABEL: Record<string, string> = {
@@ -499,6 +510,7 @@ function MainView({
 	stats,
 	installed,
 	onSelectGame,
+	onOpenList,
 	onPickVibe,
 	onBack,
 	canBack,
@@ -509,6 +521,7 @@ function MainView({
 	stats: Stats | null;
 	installed: InstalledIndex | null;
 	onSelectGame: (appid: number) => void;
+	onOpenList: (slug: string) => void;
 	onPickVibe: (q: string) => void;
 	onBack: () => void;
 	canBack: boolean;
@@ -533,6 +546,7 @@ function MainView({
 				onNavigate={onSelectGame}
 				onLoaded={onDetailLoaded}
 				onSearch={(q) => onPickVibe(q)}
+				onOpenList={onOpenList}
 			/>
 		);
 	if (view.kind === 'search')
@@ -585,6 +599,10 @@ function MainView({
 				onSelect={onSelectGame}
 			/>
 		);
+	if (view.kind === 'recently_viewed')
+		return (
+			<RecentlyViewedView installed={installed} onSelect={onSelectGame} />
+		);
 	if (view.kind === 'settings')
 		return (
 			<Settings
@@ -628,9 +646,10 @@ function SearchResults({
 	title?: string;
 }) {
 	const [results, setResults] = useState<LibraryGame[]>([]);
-	// Start `true` so the very first render shows "Searching…" instead of
-	// the empty "No matches." flash before the effect kicks in. Also reset
-	// to true at the top of each fetch so old results don't show stale.
+	// `loading` starts true and remains true until a fetch ACTUALLY
+	// completes (not aborted). This prevents the "No matches" empty-state
+	// from flashing when an effect cleanup runs (Strict Mode double-mount,
+	// or rapid navigation) and the .finally fires from the aborted call.
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [sort, setSort] = useState<SearchSort>(initialSort ?? 'match');
@@ -655,11 +674,16 @@ function SearchResults({
 		if (tag) params.tag = tag;
 		api
 			.library(params, ctrl.signal)
-			.then((d) => setResults(d.results))
-			.catch((e) => {
-				if (e.name !== 'AbortError') setError(e.message);
+			.then((d) => {
+				if (ctrl.signal.aborted) return;
+				setResults(d.results);
+				setLoading(false);
 			})
-			.finally(() => setLoading(false));
+			.catch((e) => {
+				if (ctrl.signal.aborted || e.name === 'AbortError') return;
+				setError(e.message);
+				setLoading(false);
+			});
 		return () => ctrl.abort();
 	}, [query, tag]);
 
@@ -718,7 +742,7 @@ function SearchResults({
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (loading && results.length === 0)
-		return <div className="text-zinc-500 text-sm">Searching…</div>;
+		return <LoadingState message="Searching…" />;
 	if (results.length === 0 && !loading)
 		return <div className="text-zinc-500 text-sm">No matches.</div>;
 
@@ -866,18 +890,18 @@ function ListView({
 		}
 	}
 
-	if (loading && !list)
-		return <div className="text-zinc-500 text-sm">Loading…</div>;
+	// Don't render stale-list data when navigating list-to-list — the
+	// previous list's games would briefly flash. Only render once loaded
+	// data matches the requested slug.
+	if (loading || !list || list.slug !== slug)
+		return <LoadingState />;
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
 	if (!list) return null;
 
 	return (
 		<div>
 			<header className="mb-4">
-				<h1 className="text-lg font-semibold flex items-center gap-2">
-					{list.emoji && <span>{list.emoji}</span>}
-					{list.name}
-				</h1>
+				<h1 className="text-lg font-semibold">{list.name}</h1>
 				<p className="text-xs text-zinc-500">
 					{list.games.length} {list.games.length === 1 ? 'game' : 'games'}
 				</p>
@@ -895,6 +919,125 @@ function ListView({
 						{
 							label: `Remove "${g.name}" from "${list.name}"`,
 							onClick: () => removeFromList(g.appid),
+							danger: true,
+						},
+					]}
+				/>
+			)}
+		</div>
+	);
+}
+
+function RecentlyViewedView({
+	installed,
+	onSelect,
+}: {
+	installed: InstalledIndex | null;
+	onSelect: (appid: number) => void;
+}) {
+	const [entries, setEntries] = useState<RecentlyViewedEntry[]>(
+		getRecentlyViewed,
+	);
+	const [games, setGames] = useState<LibraryGame[] | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [filter, setFilter] = useState('');
+
+	useEffect(() => {
+		const onChange = () => setEntries(getRecentlyViewed());
+		window.addEventListener('seg:recently-viewed:changed', onChange);
+		return () =>
+			window.removeEventListener('seg:recently-viewed:changed', onChange);
+	}, []);
+
+	useEffect(() => {
+		if (entries.length === 0) {
+			setGames([]);
+			return;
+		}
+		const ctrl = new AbortController();
+		const ids = entries.map((e) => e.appid).join(',');
+		api
+			.library({ appids: ids, limit: entries.length }, ctrl.signal)
+			.then((d) => {
+				// Preserve recency order — server returns alpha by default.
+				const byId = new Map(d.results.map((g) => [g.appid, g]));
+				setGames(
+					entries
+						.map((e) => byId.get(e.appid))
+						.filter((g): g is LibraryGame => g !== undefined),
+				);
+			})
+			.catch((e) => {
+				if (e.name !== 'AbortError') setError(e.message);
+			});
+		return () => ctrl.abort();
+	}, [entries]);
+
+	const visible = useMemo(() => {
+		if (!games) return null;
+		const q = filter.trim().toLowerCase();
+		if (!q) return games;
+		return games.filter((g) => g.name.toLowerCase().includes(q));
+	}, [games, filter]);
+
+	if (error) return <div className="text-red-400 text-sm">{error}</div>;
+
+	return (
+		<div>
+			<header className="mb-4 flex items-baseline justify-between gap-3 flex-wrap">
+				<div>
+					<h1 className="text-lg font-semibold flex items-center gap-2">
+						<span>👁</span> Recently viewed
+					</h1>
+					<p className="text-xs text-zinc-500">
+						{entries.length}{' '}
+						{entries.length === 1 ? 'game' : 'games'} you've opened (most
+						recent first)
+					</p>
+				</div>
+				{entries.length > 0 && (
+					<button
+						type="button"
+						onClick={() => clearRecentlyViewed()}
+						className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+					>
+						Clear history
+					</button>
+				)}
+			</header>
+			{entries.length > 0 && (
+				<div className="mb-4">
+					<input
+						type="text"
+						value={filter}
+						onChange={(e) => setFilter(e.target.value)}
+						placeholder="Filter recently viewed by name…"
+						className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-xs placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
+					/>
+					{filter && visible && games && (
+						<span className="ml-3 text-xs text-zinc-500 tabular-nums">
+							{visible.length} of {games.length}
+						</span>
+					)}
+				</div>
+			)}
+			{!visible ? (
+				<LoadingState />
+			) : visible.length === 0 ? (
+				<div className="text-zinc-500 text-sm">
+					{filter
+						? `No matches for "${filter}".`
+						: "Nothing here yet. Open any game's detail page and it'll show up."}
+				</div>
+			) : (
+				<GameGrid
+					games={visible}
+					installed={installed}
+					onSelect={onSelect}
+					cardContextMenu={(g) => [
+						{
+							label: `Remove "${g.name}" from history`,
+							onClick: () => removeFromRecentlyViewed(g.appid),
 							danger: true,
 						},
 					]}
@@ -930,10 +1073,17 @@ function SavedSearchView({
 	}, [slug]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
-	if (!saved) return <div className="text-zinc-500 text-sm">Loading…</div>;
+	// Wait until the LATEST saved row arrives before rendering — otherwise
+	// SearchResults briefly renders with the previous saved-search's query
+	// (or empty) and flashes "No matches"/"Searching" out of order.
+	if (!saved || saved.slug !== slug)
+		return <LoadingState message="Searching…" />;
 
 	return (
+		// `key={slug}` forces SearchResults to remount cleanly when
+		// navigating between saved searches.
 		<SearchResults
+			key={slug}
 			query={saved.query}
 			installed={installed}
 			onSelect={onSelect}

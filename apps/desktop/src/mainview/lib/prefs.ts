@@ -10,7 +10,19 @@ const KEY = {
 	sidebar: 'seg.prefs.sidebar.v1',
 	cardsPerRow: 'seg.prefs.cardsPerRow.v1',
 	alwaysShowRefreshIcons: 'seg.prefs.alwaysShowRefreshIcons.v1',
+	recentlyViewed: 'seg.recentlyViewed.v1',
 } as const;
+
+// No artificial cap — keep the full history. Each entry is tiny (just
+// appid/name/header_image/iso-date) so even thousands fit in localStorage.
+export const RECENTLY_VIEWED_MAX = 5000;
+
+export interface RecentlyViewedEntry {
+	appid: number;
+	name: string;
+	header_image: string | null;
+	viewed_at: string;
+}
 
 export const RECENTLY_ADDED_MONTHS_DEFAULT = 2;
 export const VIBES_ENABLED_DEFAULT = true;
@@ -26,11 +38,13 @@ export type SidebarKey =
 	| 'recommended'
 	| 'random'
 	| 'unplayed'
+	| 'weekend'
 	| 'recently_played'
 	| 'recently_added'
 	| 'platforms'
 	| 'lists'
-	| 'recent_searches';
+	| 'recent_searches'
+	| 'recently_viewed';
 
 export type SidebarVisibility = Record<SidebarKey, boolean>;
 
@@ -39,11 +53,13 @@ export const SIDEBAR_DEFAULT: SidebarVisibility = {
 	recommended: true,
 	random: true,
 	unplayed: true,
+	weekend: true,
 	recently_played: true,
 	recently_added: true,
 	platforms: true,
 	lists: true,
 	recent_searches: true,
+	recently_viewed: true,
 };
 
 export const SIDEBAR_LABELS: Record<SidebarKey, string> = {
@@ -51,11 +67,13 @@ export const SIDEBAR_LABELS: Record<SidebarKey, string> = {
 	recommended: 'Recommended',
 	random: 'Random',
 	unplayed: 'Unplayed',
+	weekend: 'Weekend games',
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
 	platforms: 'Platforms section',
 	lists: 'Lists section',
 	recent_searches: 'Recent searches section',
+	recently_viewed: 'Recently viewed section',
 };
 
 export function getRecentlyAddedMonths(): number {
@@ -154,6 +172,60 @@ export function setCardsPerRow(n: number): void {
 	try {
 		localStorage.setItem(KEY.cardsPerRow, String(n));
 		window.dispatchEvent(new CustomEvent('seg:prefs:cards-per-row'));
+	} catch {
+		/* ignore */
+	}
+}
+
+/**
+ * Recently-viewed log: every game detail view appended (most-recent first),
+ * capped at RECENTLY_VIEWED_MAX entries, dedupe-by-appid (re-viewing a game
+ * moves it to the top instead of duplicating). Recording is gated by the
+ * sidebar's `recently_viewed` visibility toggle so disabling the section
+ * also stops recording.
+ */
+export function getRecentlyViewed(): RecentlyViewedEntry[] {
+	try {
+		const raw = localStorage.getItem(KEY.recentlyViewed);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw) as RecentlyViewedEntry[];
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+export function recordRecentlyViewed(entry: {
+	appid: number;
+	name: string;
+	header_image: string | null;
+}): void {
+	if (!getSidebarVisibility().recently_viewed) return;
+	try {
+		const current = getRecentlyViewed().filter((e) => e.appid !== entry.appid);
+		current.unshift({ ...entry, viewed_at: new Date().toISOString() });
+		const capped = current.slice(0, RECENTLY_VIEWED_MAX);
+		localStorage.setItem(KEY.recentlyViewed, JSON.stringify(capped));
+		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
+	} catch {
+		/* ignore quota / parse errors */
+	}
+}
+
+export function clearRecentlyViewed(): void {
+	try {
+		localStorage.removeItem(KEY.recentlyViewed);
+		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
+	} catch {
+		/* ignore */
+	}
+}
+
+export function removeFromRecentlyViewed(appid: number): void {
+	try {
+		const filtered = getRecentlyViewed().filter((e) => e.appid !== appid);
+		localStorage.setItem(KEY.recentlyViewed, JSON.stringify(filtered));
+		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
 	} catch {
 		/* ignore */
 	}

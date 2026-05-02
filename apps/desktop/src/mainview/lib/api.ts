@@ -271,7 +271,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 async function jsonCall<T>(
 	path: string,
-	method: 'POST' | 'DELETE',
+	method: 'POST' | 'DELETE' | 'PATCH',
 	body?: unknown,
 ): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
@@ -290,8 +290,18 @@ export interface SimilarResponse {
 	results: (LibraryGame & { similarity: number })[];
 }
 
+export interface HealthStatus {
+	db: 'ok' | 'down';
+	ai: 'ok' | 'disabled';
+	steam_key: 'present' | 'missing';
+	steam_id: 'present' | 'missing';
+	total_games: number;
+	last_sync: string | null;
+}
+
 export const api = {
 	stats: (signal?: AbortSignal) => get<Stats>('/stats', signal),
+	health: (signal?: AbortSignal) => get<HealthStatus>('/health', signal),
 	library: (
 		params: Record<string, string | number | undefined>,
 		signal?: AbortSignal,
@@ -344,6 +354,10 @@ export const api = {
 		}),
 	deleteList: (listRef: string | number) =>
 		jsonCall<{ ok: boolean }>(`/lists/${listRef}`, 'DELETE'),
+	renameList: (
+		listRef: string | number,
+		patch: { name?: string; emoji?: string | null },
+	) => jsonCall<ListSummary>(`/lists/${listRef}`, 'PATCH', patch),
 	savedSearches: (signal?: AbortSignal) =>
 		get<{ saved_searches: SavedSearchSummary[] }>('/saved_searches', signal),
 	getSavedSearch: (ref: string | number, signal?: AbortSignal) =>

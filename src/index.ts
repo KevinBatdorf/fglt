@@ -60,12 +60,47 @@ app.get('/', (c) =>
 			'GET  /similar?appid=  | ?q=  &platform=&max_playtime=&min_positive_pct=&limit=',
 			'GET  /curate                 (home dashboard: continue/recs/random/etc.)',
 			'GET  /stats',
+			'GET  /health                 (readiness + setup-status for the desktop app)',
 			'POST /sync',
 			'GET  /mcp           (discovery)',
 			'POST /mcp           (JSON-RPC 2.0; OAuth lives in expose-tunnels proxy)',
 		],
 	}),
 );
+
+/**
+ * Lightweight readiness + setup-status probe. Always returns 200 — the
+ * body reflects what's healthy and what needs the user's attention. The
+ * desktop app polls this and surfaces problems via a top-of-window banner
+ * + a "System status" section in Settings.
+ */
+app.get('/health', async (c) => {
+	let dbOk = false;
+	let totalGames = 0;
+	let lastSync: string | null = null;
+	try {
+		const [row] = await raw`SELECT 1 AS ok`;
+		dbOk = row?.ok === 1;
+		if (dbOk) {
+			const [gc] = await raw`SELECT COUNT(*)::int AS n FROM games`;
+			totalGames = (gc?.n as number) ?? 0;
+			const [sync] =
+				await raw`SELECT value FROM meta WHERE key = 'last_sync' LIMIT 1`;
+			lastSync = (sync?.value as string | undefined) ?? null;
+		}
+	} catch {
+		dbOk = false;
+	}
+
+	return c.json({
+		db: dbOk ? 'ok' : 'down',
+		ai: isOllamaEnabled() || !!process.env.AI_BASE_URL ? 'ok' : 'disabled',
+		steam_key: process.env.STEAM_API_KEY ? 'present' : 'missing',
+		steam_id: process.env.STEAM_ID ? 'present' : 'missing',
+		total_games: totalGames,
+		last_sync: lastSync,
+	});
+});
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 

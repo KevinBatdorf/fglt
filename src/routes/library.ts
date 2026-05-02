@@ -42,6 +42,11 @@ export function libraryRoutes(raw: postgres.Sql) {
 			conds.push(raw`g.playtime_min >= ${minPlaytime}`);
 		if (maxPlaytime !== undefined)
 			conds.push(raw`g.playtime_min <= ${maxPlaytime}`);
+		// Weekend / short games — filter by HLTB main story length.
+		const maxHltbMain = num(c.req.query('max_hltb_main'));
+		if (maxHltbMain !== undefined) {
+			conds.push(raw`g.hltb_main IS NOT NULL AND g.hltb_main <= ${maxHltbMain}`);
+		}
 		if (genre) conds.push(raw`${genre} = ANY(g.genres)`);
 		if (tag)
 			conds.push(
@@ -53,6 +58,21 @@ export function libraryRoutes(raw: postgres.Sql) {
 			);
 		if (q.length > 0 && !vec)
 			conds.push(raw`g.search @@ websearch_to_tsquery('english', ${q})`);
+
+		// Restrict to a specific appid set, e.g. for the client-side
+		// "Recently viewed" view that holds appids in localStorage.
+		// Comma-separated. Capped at 500 to keep the IN(...) reasonable.
+		const appidsRaw = c.req.query('appids')?.trim();
+		if (appidsRaw) {
+			const ids = appidsRaw
+				.split(',')
+				.map((s) => Number.parseInt(s, 10))
+				.filter((n) => Number.isFinite(n))
+				.slice(0, 5000);
+			if (ids.length > 0) {
+				conds.push(raw`g.appid = ANY(${ids})`);
+			}
+		}
 
 		// `recently_added=1` shows only games added AFTER the initial setup
 		// (skipping the bulk Steam/Epic/GOG sync rows) and within a recent

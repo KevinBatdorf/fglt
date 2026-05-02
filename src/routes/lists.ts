@@ -120,11 +120,40 @@ export function listsRoutes(raw: postgres.Sql) {
 		}
 	});
 
+	app.patch('/lists/:ref', async (c) => {
+		const list = await resolveList(raw, c.req.param('ref'));
+		if (!list) return c.json({ error: 'not found' }, 404);
+		const body = (await c.req.json().catch(() => ({}))) as {
+			name?: string;
+			emoji?: string | null;
+		};
+		const name = body.name?.trim();
+		// Apply only the fields that were actually provided. emoji=null
+		// explicitly clears the icon; emoji=undefined leaves it alone.
+		if (name) {
+			await raw`UPDATE lists SET name = ${name} WHERE id = ${list.id}`;
+		}
+		if ('emoji' in body) {
+			await raw`UPDATE lists SET emoji = ${body.emoji ?? null} WHERE id = ${list.id}`;
+		}
+		const [updated] = await raw`
+			SELECT id, slug, name, emoji, is_system, created_at FROM lists WHERE id = ${list.id}
+		`;
+		return c.json(updated);
+	});
+
 	app.delete('/lists/:ref', async (c) => {
 		const list = await resolveList(raw, c.req.param('ref'));
 		if (!list) return c.json({ error: 'not found' }, 404);
-		if (list.is_system) {
-			return c.json({ error: 'system lists cannot be deleted' }, 400);
+		// At least one list must always exist — refuse the delete if this
+		// would empty the lists set. The UI can fall back to creating a
+		// new one before retrying.
+		const [{ count }] = await raw`SELECT COUNT(*)::int AS count FROM lists`;
+		if ((count as number) <= 1) {
+			return c.json(
+				{ error: 'at least one list must remain' },
+				400,
+			);
 		}
 		await raw`DELETE FROM lists WHERE id = ${list.id}`;
 		return c.json({ ok: true });

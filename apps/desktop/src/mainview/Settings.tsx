@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { GameImage } from './GameImage';
-import { type ActivityResponse, api, type Stats } from './lib/api';
+import {
+	type ActivityResponse,
+	api,
+	type HealthStatus,
+	type Stats,
+} from './lib/api';
 import {
 	CARDS_PER_ROW_MAX,
 	CARDS_PER_ROW_MIN,
@@ -105,6 +110,8 @@ export function Settings({ stats, onStatsRefresh, onSelect }: Props) {
 					Status, sync controls, and library bookkeeping.
 				</p>
 			</header>
+
+			<SystemStatusSection />
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
@@ -588,5 +595,113 @@ function ActivityRow({
 				))}
 			</ul>
 		</div>
+	);
+}
+
+/**
+ * Settings-page mirror of the top-of-window HealthBanner. Shows the same
+ * /health snapshot but always visible (no dismiss) and broken into a list
+ * the user can scan for what's set up vs what isn't.
+ */
+function SystemStatusSection() {
+	const [health, setHealth] = useState<HealthStatus | null>(null);
+	const [reachable, setReachable] = useState(true);
+	const [busy, setBusy] = useState(false);
+
+	async function recheck() {
+		setBusy(true);
+		try {
+			const h = await api.health();
+			setHealth(h);
+			setReachable(true);
+		} catch {
+			setReachable(false);
+			setHealth(null);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	useEffect(() => {
+		void recheck();
+	}, []);
+
+	const rows: { label: string; value: string; ok: boolean }[] = !reachable
+		? [{ label: 'API', value: 'Unreachable', ok: false }]
+		: !health
+			? []
+			: [
+					{
+						label: 'API',
+						value: 'Reachable',
+						ok: true,
+					},
+					{
+						label: 'Database',
+						value: health.db === 'ok' ? 'Connected' : 'Down',
+						ok: health.db === 'ok',
+					},
+					{
+						label: 'AI provider',
+						value: health.ai === 'ok' ? 'Configured' : 'Disabled',
+						ok: health.ai === 'ok',
+					},
+					{
+						label: 'STEAM_API_KEY',
+						value: health.steam_key === 'present' ? 'Set' : 'Missing',
+						ok: health.steam_key === 'present',
+					},
+					{
+						label: 'STEAM_ID',
+						value: health.steam_id === 'present' ? 'Set' : 'Missing',
+						ok: health.steam_id === 'present',
+					},
+					{
+						label: 'Games in library',
+						value: health.total_games.toLocaleString(),
+						ok: health.total_games > 0,
+					},
+					{
+						label: 'Last sync',
+						value: health.last_sync
+							? new Date(health.last_sync).toLocaleString()
+							: 'Never',
+						ok: !!health.last_sync,
+					},
+				];
+
+	return (
+		<section>
+			<div className="flex items-baseline justify-between mb-2">
+				<h2 className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
+					System status
+				</h2>
+				<button
+					type="button"
+					onClick={() => void recheck()}
+					disabled={busy}
+					className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+				>
+					{busy ? 'Checking…' : 'Re-check'}
+				</button>
+			</div>
+			<dl className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-xs space-y-1.5">
+				{rows.map((r) => (
+					<div key={r.label} className="grid grid-cols-[140px_1fr] gap-2">
+						<dt className="text-zinc-500">{r.label}</dt>
+						<dd
+							className={
+								r.ok ? 'text-emerald-300' : 'text-amber-300'
+							}
+						>
+							<span aria-hidden className="mr-1.5">
+								{r.ok ? '✓' : '✗'}
+							</span>
+							{r.value}
+						</dd>
+					</div>
+				))}
+			</dl>
+		</section>
 	);
 }

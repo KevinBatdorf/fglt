@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { InstalledIndex, Platform } from '../shared/types';
 import { GameImage } from './GameImage';
+import { LoadingState } from './LoadingState';
 import {
 	api,
 	type ExternalScore,
@@ -11,7 +12,7 @@ import {
 	type Screenshot,
 	type SteamUserReview,
 } from './lib/api';
-import { getAlwaysShowRefreshIcons } from './lib/prefs';
+import { getAlwaysShowRefreshIcons, recordRecentlyViewed } from './lib/prefs';
 import { rpc } from './lib/rpc';
 
 /** Recent-release window for showing the refresh icon by default. */
@@ -166,6 +167,8 @@ interface Props {
 	onNavigate: (appid: number) => void;
 	onLoaded?: (name: string | null) => void;
 	onSearch?: (query: string) => void;
+	/** Open a list view by slug — called when a green list pill is clicked. */
+	onOpenList?: (slug: string) => void;
 }
 
 export function GameDetail({
@@ -176,6 +179,7 @@ export function GameDetail({
 	onNavigate,
 	onLoaded,
 	onSearch,
+	onOpenList,
 }: Props) {
 	const [game, setGame] = useState<GameDetailType | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -214,6 +218,11 @@ export function GameDetail({
 			.then((g) => {
 				setGame(g);
 				onLoaded?.(g.name);
+				recordRecentlyViewed({
+					appid: g.appid,
+					name: g.name,
+					header_image: g.header_image,
+				});
 			})
 			.catch((e) => {
 				if (e.name !== 'AbortError') setError(`Load failed: ${e.message}`);
@@ -226,6 +235,21 @@ export function GameDetail({
 			});
 		return () => ctrl.abort();
 	}, [appid, onLoaded]);
+
+	// Refetch when sidebar lists change so the green pills here stay in
+	// sync after a list is renamed or deleted from the sidebar context menu.
+	useEffect(() => {
+		const onChange = () => {
+			api
+				.game(appid)
+				.then(setGame)
+				.catch(() => {
+					/* keep stale data on refetch failure */
+				});
+		};
+		window.addEventListener('seg:lists:changed', onChange);
+		return () => window.removeEventListener('seg:lists:changed', onChange);
+	}, [appid]);
 
 	async function handleLaunchAction(platform: Platform) {
 		if (!game) return;
@@ -270,7 +294,11 @@ export function GameDetail({
 						alt=""
 						variant="library_hero"
 						fallback={game.header_image}
-						className="w-full h-[340px] object-cover bg-zinc-900"
+						// Steam library_hero is 1920×620 (≈3:1). Aspect-ratio
+						// sizing keeps the image proportional at any width;
+						// min/max bounds prevent comically tall/short heroes
+						// at extreme window sizes.
+						className="w-full aspect-[1920/620] object-cover bg-zinc-900 max-h-[420px] min-h-[220px]"
 					/>
 				)}
 				<div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/30 to-transparent" />
@@ -313,10 +341,10 @@ export function GameDetail({
 			</div>
 
 			{/* Body */}
-			<div className="px-6 py-6 max-w-6xl space-y-8">
+			<div className="px-6 py-6 space-y-7">
 				{error && <div className="text-red-400 text-sm">{error}</div>}
 				{!game && !error && (
-					<div className="text-zinc-500 text-sm">Loading…</div>
+					<LoadingState />
 				)}
 
 				{game && (
@@ -327,20 +355,36 @@ export function GameDetail({
 							onAction={handleLaunchAction}
 						/>
 
-						<ListsSection
-							appid={game.appid}
-							memberOf={game.lists}
-							onChange={async () => {
-								const updated = await api.game(game.appid);
-								setGame(updated);
-							}}
-						/>
+						{/* Top metadata cluster — lists + tags grouped tightly so
+						    they read as one band of "what is this game" between
+						    the launch buttons and the media grid. */}
+						<div className="space-y-3">
+							<ListsSection
+								appid={game.appid}
+								memberOf={game.lists}
+								onOpenList={(slug) => onOpenList?.(slug)}
+								onChange={async () => {
+									const updated = await api.game(game.appid);
+									setGame(updated);
+								}}
+							/>
+							{topTags.length > 0 && (
+								<TagsSection tags={topTags} onSearch={onSearch} bare />
+							)}
+						</div>
 
-						<div className="grid lg:grid-cols-[1.5fr_1fr] gap-8">
+						{/* Right metadata column is capped — it grew unreasonably
+					    wide on big monitors when sized as a flex `1fr`. The
+					    media column (left) absorbs all the extra width. */}
+					<div className="grid lg:grid-cols-[1fr_clamp(280px,22vw,360px)] gap-8">
 							<div className="space-y-6">
-								{/* Description + tags moved to the right sidebar so all
-								    metadata sits together and the wide column is just media
-								    (screenshots, reviews). */}
+								{game.short_desc && (
+									<section>
+										<p className="text-base text-zinc-200 leading-relaxed">
+											{game.short_desc}
+										</p>
+									</section>
+								)}
 								<section>
 									{/* No section title — a row of game screenshots is
 									    self-explanatory. Refresh affordance still lives
@@ -448,16 +492,6 @@ export function GameDetail({
 									showRefreshIcon={showRefreshIcon}
 									refreshOC={refreshOC}
 								/>
-								{game.short_desc && (
-									<section>
-										<p className="text-sm text-zinc-200 leading-relaxed">
-											{game.short_desc}
-										</p>
-									</section>
-								)}
-								{topTags.length > 0 && (
-									<TagsSection tags={topTags} onSearch={onSearch} />
-								)}
 								<StatsRow game={game} />
 								<GameInfoSection game={game} />
 							</div>
@@ -468,7 +502,7 @@ export function GameDetail({
 								Similar games you own
 							</h3>
 							{vectorSimilar === null ? (
-								<div className="text-sm text-zinc-500">Finding similar…</div>
+								<LoadingState message="Finding similar…" />
 							) : vectorSimilar.length === 0 ? (
 								<div className="text-sm text-zinc-500">
 									No close matches in your library.
@@ -622,10 +656,12 @@ function ListsSection({
 	appid,
 	memberOf,
 	onChange,
+	onOpenList,
 }: {
 	appid: number;
 	memberOf: GameDetailType['lists'];
 	onChange: () => void | Promise<void>;
+	onOpenList: (slug: string) => void;
 }) {
 	const [allLists, setAllLists] = useState<ListSummary[] | null>(null);
 	const [showPicker, setShowPicker] = useState(false);
@@ -669,20 +705,22 @@ function ListsSection({
 				{memberOf.length > 0 && (
 					<div className="flex flex-wrap gap-1.5">
 						{memberOf.map((l) => (
-							<span
+							<button
+								type="button"
 								key={l.id}
-								className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 border border-emerald-700/50 text-emerald-100"
+								onClick={() => onOpenList(l.slug)}
+								title={`Open "${l.name}"`}
+								className="text-xs px-2.5 py-1 rounded-full bg-emerald-900/50 border border-emerald-700/50 text-emerald-100 hover:bg-emerald-800/60 hover:border-emerald-600 transition-colors"
 							>
-								{l.emoji && <span className="mr-1">{l.emoji}</span>}
 								{l.name}
-							</span>
+							</button>
 						))}
 					</div>
 				)}
 				<button
 					type="button"
 					onClick={() => setShowPicker((v) => !v)}
-					className="text-xs text-emerald-400 hover:text-emerald-300"
+					className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
 				>
 					{showPicker
 						? 'Done'
@@ -704,7 +742,6 @@ function ListsSection({
 								className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800 text-sm text-left"
 							>
 								<span className="w-4 text-center">{isMember ? '✓' : ''}</span>
-								<span className="w-5 text-center">{l.emoji ?? '📋'}</span>
 								<span className="flex-1">{l.name}</span>
 								<span className="text-[10px] text-zinc-500 tabular-nums">
 									{l.count ?? 0}
@@ -831,15 +868,18 @@ function CriticScoresSection({
 
 	return (
 		<section>
-			<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold flex items-center">
-				Scores
-				<RefreshIcon
-					visible={showRefreshIcon}
-					busy={refreshOC.busy}
-					onClick={refreshOC.run}
-					title="Re-fetch OpenCritic score"
-				/>
-			</h3>
+			{/* No section title — score cards are self-explanatory. The
+			    refresh icon (when applicable) floats above the stack. */}
+			{showRefreshIcon && (
+				<div className="flex justify-end mb-1">
+					<RefreshIcon
+						visible
+						busy={refreshOC.busy}
+						onClick={refreshOC.run}
+						title="Re-fetch OpenCritic score"
+					/>
+				</div>
+			)}
 			<div className="space-y-2">
 				{hasSteam && (
 					<SteamReviewScoreCard
@@ -937,29 +977,36 @@ function SteamReviewScoreCard({
 function TagsSection({
 	tags,
 	onSearch,
+	bare,
 }: {
 	tags: { tag: string; votes: number }[];
 	onSearch?: (query: string) => void;
+	/** When true, render only the chip row — no section title. */
+	bare?: boolean;
 }) {
+	const chips = (
+		<div className="flex flex-wrap gap-1.5">
+			{tags.map((t) => (
+				<button
+					type="button"
+					key={t.tag}
+					onClick={() => onSearch?.(t.tag)}
+					disabled={!onSearch}
+					className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-100 transition-colors disabled:hover:bg-zinc-900 disabled:hover:border-zinc-800 disabled:cursor-default"
+					title={`Search for "${t.tag}" — ${t.votes.toLocaleString()} votes`}
+				>
+					{t.tag}
+				</button>
+			))}
+		</div>
+	);
+	if (bare) return chips;
 	return (
 		<section>
 			<h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
 				Tags
 			</h3>
-			<div className="flex flex-wrap gap-1.5">
-				{tags.map((t) => (
-					<button
-						type="button"
-						key={t.tag}
-						onClick={() => onSearch?.(t.tag)}
-						disabled={!onSearch}
-						className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-100 transition-colors disabled:hover:bg-zinc-900 disabled:hover:border-zinc-800 disabled:cursor-default"
-						title={`Search for "${t.tag}" — ${t.votes.toLocaleString()} votes`}
-					>
-						{t.tag}
-					</button>
-				))}
-			</div>
+			{chips}
 		</section>
 	);
 }

@@ -13,8 +13,10 @@ import { rpc } from './lib/rpc';
  */
 type EdgeKey = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-const MIN_W = 480;
-const MIN_H = 360;
+// Reasonable lower bound — below this the sidebar+detail layout breaks
+// (sidebar starts at 224px at narrow widths, search bar collapses, etc.).
+const MIN_W = 900;
+const MIN_H = 600;
 
 const EDGE_STYLE: Record<EdgeKey, string> = {
 	n: 'top-0 left-2.5 right-2.5 h-1.5 cursor-ns-resize',

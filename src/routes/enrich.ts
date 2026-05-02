@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
-import { fetchHLTB } from '../lib/hltb';
+import { fetchHLTB, HLTBRateLimitError } from '../lib/hltb';
 import { embedSingle, isOllamaEnabled, toVectorLiteral } from '../lib/ollama';
 import {
 	fetchOpenCriticScore,
@@ -219,7 +219,9 @@ export async function refreshAppdetailsOnly(
 		/* best-effort */
 	}
 
-	// HLTB (use the freshly-updated name)
+	// HLTB (use the freshly-updated name). Same self-throttle pattern as
+	// OpenCritic — once the lib trips its process-wide rate-limit flag,
+	// subsequent calls short-circuit so we don't burn upstream goodwill.
 	try {
 		const [g] = await raw`SELECT name FROM games WHERE appid = ${appid}`;
 		const name = g?.name as string | undefined;
@@ -236,8 +238,13 @@ export async function refreshAppdetailsOnly(
 				`;
 			}
 		}
-	} catch {
-		/* best-effort */
+	} catch (e) {
+		if (!(e instanceof HLTBRateLimitError)) {
+			console.warn(
+				`[enrich/${appid}] hltb failed:`,
+				e instanceof Error ? e.message : e,
+			);
+		}
 	}
 
 	return 'ok';

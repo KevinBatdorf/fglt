@@ -1,18 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InstalledIndex, Platform } from '../shared/types';
 import { GameGrid } from './GameGrid';
+import { LoadingState } from './LoadingState';
 import { api, type LibraryGame } from './lib/api';
 import { getRecentlyAddedMonths } from './lib/prefs';
 import { Select } from './Select';
 
-type Preset = 'all' | 'unplayed' | 'recently_played' | 'recently_added';
+type Preset =
+	| 'all'
+	| 'unplayed'
+	| 'recently_played'
+	| 'recently_added'
+	| 'weekend';
 type SortKey =
 	| 'name'
 	| 'playtime'
 	| 'recently_played'
 	| 'recently_added'
 	| 'year'
-	| 'rating';
+	| 'rating'
+	| 'hltb_short';
 
 interface Props {
 	platformFilter: Platform | null;
@@ -26,19 +33,16 @@ const DEFAULT_SORT: Record<Preset, SortKey> = {
 	unplayed: 'rating',
 	recently_played: 'recently_played',
 	recently_added: 'recently_added',
+	weekend: 'rating',
 };
 
-// Sort options each preset actually supports. "Most played" / "Recently
-// played" are no-ops when every row has playtime=0, so they don't show up
-// in the Unplayed view.
-// "recently_added" sort only makes sense on its own preset (where the data
-// is already filtered to post-setup additions). On the other views every row
-// has its own arbitrary created_at and the sort isn't useful.
+// Sort options each preset actually supports.
 const SORT_OPTIONS: Record<Preset, SortKey[]> = {
 	all: ['name', 'playtime', 'recently_played', 'year', 'rating'],
 	unplayed: ['rating', 'name', 'year'],
 	recently_played: ['recently_played', 'playtime', 'rating', 'name', 'year'],
 	recently_added: ['recently_added', 'name', 'year', 'rating'],
+	weekend: ['rating', 'hltb_short', 'name', 'year'],
 };
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -48,6 +52,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 	recently_added: 'Sort: Recently added',
 	year: 'Sort: Newest first',
 	rating: 'Sort: Highest rated',
+	hltb_short: 'Sort: Shortest first',
 };
 
 const PRESET_TITLE: Record<Preset, string | null> = {
@@ -55,6 +60,22 @@ const PRESET_TITLE: Record<Preset, string | null> = {
 	unplayed: 'Unplayed',
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
+	weekend: 'Weekend games',
+};
+
+/**
+ * Optional one-liner under the title explaining where the data comes from
+ * and any caveats. Helps when a view is unexpectedly empty (e.g. Weekend
+ * before any HLTB data lands).
+ */
+const PRESET_BLURB: Record<Preset, string | null> = {
+	all: null,
+	unplayed: null,
+	recently_played: null,
+	recently_added:
+		'Games added to your library after the initial setup sync, within the last few months. Configure the window in Settings.',
+	weekend:
+		'Games with a HowLongToBeat main story under 5 hours. Populated as the enricher fetches HLTB data for each game (HLTB API can be flaky — empty here means the data isn’t in yet for any of your games).',
 };
 
 export function AllGames({
@@ -94,6 +115,7 @@ export function AllGames({
 			params.recently_added = '1';
 			params.within_months = getRecentlyAddedMonths();
 		}
+		if (preset === 'weekend') params.max_hltb_main = 5;
 		if (tag) params.tag = tag;
 		api
 			.library(params, ctrl.signal)
@@ -199,13 +221,19 @@ export function AllGames({
 					const rb = ratingPct(b) ?? -1;
 					return rb - ra;
 				}
+				case 'hltb_short': {
+					// Shortest first; nulls sink so unknown games don't lead.
+					const ha = a.hltb_main ?? Number.POSITIVE_INFINITY;
+					const hb = b.hltb_main ?? Number.POSITIVE_INFINITY;
+					return ha - hb;
+				}
 			}
 		});
 		return out;
 	}, [allGames, sort, searchOrder]);
 
 	if (error) return <div className="text-red-400 text-sm">{error}</div>;
-	if (!allGames) return <div className="text-zinc-500 text-sm">Loading…</div>;
+	if (!allGames) return <LoadingState />;
 
 	const sortDisabled = searchOrder !== null;
 	const presetTitle = PRESET_TITLE[preset];
@@ -223,56 +251,68 @@ export function AllGames({
 							<span className="ml-1 text-zinc-600">· ranked by relevance</span>
 						)}
 					</p>
+					{PRESET_BLURB[preset] && (
+						<p className="text-xs text-zinc-500 mt-1 max-w-2xl">
+							{PRESET_BLURB[preset]}
+						</p>
+					)}
 				</header>
 			)}
-			<div className="mb-4 flex flex-wrap items-center gap-2">
-				<input
-					type="text"
-					value={filter}
-					onChange={(e) => setFilter(e.target.value)}
-					placeholder="Search this view…"
-					title="Hybrid keyword + semantic vector search, scoped to the current view."
-					className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-xs placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
-				/>
-				<Select value={tag} onChange={setTag}>
-					<option value="">All tags</option>
-					{allTags.map((t) => (
-						<option key={t.tag} value={t.tag}>
-							{t.tag} ({t.games})
-						</option>
-					))}
-				</Select>
-				<Select
-					value={sort}
-					onChange={(v) => setSort(v as SortKey)}
-					disabled={sortDisabled}
-					title={
-						sortDisabled ? 'Search results are ranked by relevance' : undefined
-					}
-				>
-					{SORT_OPTIONS[preset].map((k) => (
-						<option key={k} value={k}>
-							{SORT_LABELS[k]}
-						</option>
-					))}
-				</Select>
-				{!presetTitle && (
-					<span className="ml-auto text-xs text-zinc-500 tabular-nums">
-						{searching ? 'searching…' : null}
-						{!searching && (
-							<>
-								{visible.length.toLocaleString()} of{' '}
-								{allGames.length.toLocaleString()}
-								{searchOrder !== null && (
-									<span className="ml-1 text-zinc-600">
-										· ranked by relevance
-									</span>
-								)}
-							</>
-						)}
-					</span>
-				)}
-			</div>
+			{/* Filters are noise on chronological / data-thin views — the
+			    Recently added view is reverse-chrono and Weekend games is
+			    typically empty (HLTB enrichment trickles). */}
+			{preset !== 'recently_added' && preset !== 'weekend' && (
+				<div className="mb-4 flex flex-wrap items-center gap-2">
+					<input
+						type="text"
+						value={filter}
+						onChange={(e) => setFilter(e.target.value)}
+						placeholder="Search this view…"
+						title="Hybrid keyword + semantic vector search, scoped to the current view."
+						className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-xs placeholder-zinc-500 focus:border-zinc-600 focus:outline-none w-64"
+					/>
+					<Select value={tag} onChange={setTag}>
+						<option value="">All tags</option>
+						{allTags.map((t) => (
+							<option key={t.tag} value={t.tag}>
+								{t.tag} ({t.games})
+							</option>
+						))}
+					</Select>
+					<Select
+						value={sort}
+						onChange={(v) => setSort(v as SortKey)}
+						disabled={sortDisabled}
+						title={
+							sortDisabled
+								? 'Search results are ranked by relevance'
+								: undefined
+						}
+					>
+						{SORT_OPTIONS[preset].map((k) => (
+							<option key={k} value={k}>
+								{SORT_LABELS[k]}
+							</option>
+						))}
+					</Select>
+					{!presetTitle && (
+						<span className="ml-auto text-xs text-zinc-500 tabular-nums">
+							{searching ? 'searching…' : null}
+							{!searching && (
+								<>
+									{visible.length.toLocaleString()} of{' '}
+									{allGames.length.toLocaleString()}
+									{searchOrder !== null && (
+										<span className="ml-1 text-zinc-600">
+											· ranked by relevance
+										</span>
+									)}
+								</>
+							)}
+						</span>
+					)}
+				</div>
+			)}
 
 			<GameGrid games={visible} installed={installed} onSelect={onSelect} />
 		</div>

@@ -8,19 +8,30 @@ import {
 	notifySavedSearchesChanged,
 	type SavedSearchSummary,
 } from './lib/api';
-import { getSidebarVisibility, type SidebarVisibility } from './lib/prefs';
+import {
+	getSidebarVisibility,
+	type SidebarKey,
+	setSidebarVisibility,
+	type SidebarVisibility,
+} from './lib/prefs';
 
 export type View =
 	| { kind: 'home' }
 	| { kind: 'search'; query: string }
 	| {
 			kind: 'filter';
-			what: 'all' | 'unplayed' | 'recently_played' | 'recently_added';
+			what:
+				| 'all'
+				| 'unplayed'
+				| 'recently_played'
+				| 'recently_added'
+				| 'weekend';
 	  }
 	| { kind: 'discover'; what: 'trending' | 'random' | 'recommended' }
 	| { kind: 'platform'; platform: Platform }
 	| { kind: 'list'; slug: string }
 	| { kind: 'saved_search'; slug: string }
+	| { kind: 'recently_viewed' }
 	| { kind: 'settings' }
 	| { kind: 'detail'; appid: number };
 
@@ -51,6 +62,31 @@ export function Sidebar({
 		y: number;
 		list: ListSummary;
 	} | null>(null);
+	const [renamingListId, setRenamingListId] = useState<number | null>(null);
+	const [renameValue, setRenameValue] = useState('');
+
+	async function handleRenameSubmit(list: ListSummary) {
+		const trimmed = renameValue.trim();
+		if (!trimmed) {
+			setRenamingListId(null);
+			return;
+		}
+		// Same emoji-prefix convention as create — let the user re-set the
+		// icon by editing the leading emoji in the name.
+		const { emoji, name } = splitLeadingEmoji(trimmed);
+		try {
+			await api.renameList(list.slug, { name, emoji: emoji ?? null });
+			const refreshed = await api.lists();
+			setLists(refreshed.lists);
+			notifyListsChanged();
+		} catch (e) {
+			console.error('rename failed:', e);
+		} finally {
+			setRenamingListId(null);
+			setRenameValue('');
+		}
+	}
+
 	const [savedMenu, setSavedMenu] = useState<{
 		x: number;
 		y: number;
@@ -61,6 +97,17 @@ export function Sidebar({
 		y: number;
 		query: string;
 	} | null>(null);
+	const [navItemMenu, setNavItemMenu] = useState<{
+		x: number;
+		y: number;
+		key: SidebarKey;
+		label: string;
+	} | null>(null);
+
+	function hideNavItem(key: SidebarKey) {
+		setSidebarVisibility({ ...vis, [key]: false });
+		setNavItemMenu(null);
+	}
 	// When the user picks "Save as Curated" or "Create list from results"
 	// from the recent-searches context menu, we open an inline name input
 	// instead of a modal — fits the rest of the sidebar.
@@ -131,7 +178,17 @@ export function Sidebar({
 				onNavigate({ kind: 'home' });
 			}
 		} catch (e) {
-			console.error('delete list failed:', e);
+			// Server enforces "at least one list must remain" — surface the
+			// rejection as an alert so the user knows why the delete didn't
+			// happen instead of silently no-oping.
+			const msg = e instanceof Error ? e.message : 'unknown';
+			if (msg.includes('at least one list')) {
+				alert(
+					"Can't delete — at least one list must remain. Create a new list first, then delete this one.",
+				);
+			} else {
+				console.error('delete list failed:', e);
+			}
 		}
 	}
 
@@ -156,13 +213,18 @@ export function Sidebar({
 	}, []);
 
 	async function handleCreateList(navigateAfter: boolean) {
-		const name = newListName.trim();
-		if (!name) {
+		const trimmed = newListName.trim();
+		if (!trimmed) {
 			setCreatingList(false);
 			return;
 		}
+		// Lightweight emoji-as-prefix UX: if the input starts with an emoji
+		// followed by whitespace (e.g. "🎮 Quick fun"), peel it off into the
+		// emoji field so the list shows the user's chosen icon instead of
+		// the default 📋. Falls back to plain name if no leading emoji.
+		const { emoji, name } = splitLeadingEmoji(trimmed);
 		try {
-			const created = await api.createList(name);
+			const created = await api.createList(name, emoji);
 			const refreshed = await api.lists();
 			setLists(refreshed.lists);
 			notifyListsChanged();
@@ -196,6 +258,11 @@ export function Sidebar({
 						<NavItem
 							active={view.kind === 'discover' && view.what === 'trending'}
 							onClick={() => onNavigate({ kind: 'discover', what: 'trending' })}
+							onContextMenu={navHideContextMenu(
+								'trending',
+								'Trending',
+								setNavItemMenu,
+							)}
 							icon="🔥"
 							label="Trending"
 						/>
@@ -206,6 +273,11 @@ export function Sidebar({
 							onClick={() =>
 								onNavigate({ kind: 'discover', what: 'recommended' })
 							}
+							onContextMenu={navHideContextMenu(
+								'recommended',
+								'Recommended',
+								setNavItemMenu,
+							)}
 							icon="✨"
 							label="Recommended"
 						/>
@@ -214,6 +286,11 @@ export function Sidebar({
 						<NavItem
 							active={view.kind === 'discover' && view.what === 'random'}
 							onClick={() => onNavigate({ kind: 'discover', what: 'random' })}
+							onContextMenu={navHideContextMenu(
+								'random',
+								'Random',
+								setNavItemMenu,
+							)}
 							icon="🎲"
 							label="Random"
 						/>
@@ -222,8 +299,26 @@ export function Sidebar({
 						<NavItem
 							active={view.kind === 'filter' && view.what === 'unplayed'}
 							onClick={() => onNavigate({ kind: 'filter', what: 'unplayed' })}
+							onContextMenu={navHideContextMenu(
+								'unplayed',
+								'Unplayed',
+								setNavItemMenu,
+							)}
 							icon="📥"
 							label="Unplayed"
+						/>
+					)}
+					{vis.weekend && (
+						<NavItem
+							active={view.kind === 'filter' && view.what === 'weekend'}
+							onClick={() => onNavigate({ kind: 'filter', what: 'weekend' })}
+							onContextMenu={navHideContextMenu(
+								'weekend',
+								'Weekend games',
+								setNavItemMenu,
+							)}
+							icon="🌅"
+							label="Weekend games"
 						/>
 					)}
 					{vis.recently_played && (
@@ -232,6 +327,11 @@ export function Sidebar({
 							onClick={() =>
 								onNavigate({ kind: 'filter', what: 'recently_played' })
 							}
+							onContextMenu={navHideContextMenu(
+								'recently_played',
+								'Recently played',
+								setNavItemMenu,
+							)}
 							icon="🕒"
 							label="Recently played"
 						/>
@@ -242,8 +342,26 @@ export function Sidebar({
 							onClick={() =>
 								onNavigate({ kind: 'filter', what: 'recently_added' })
 							}
+							onContextMenu={navHideContextMenu(
+								'recently_added',
+								'Recently added',
+								setNavItemMenu,
+							)}
 							icon="🆕"
 							label="Recently added"
+						/>
+					)}
+					{vis.recently_viewed && (
+						<NavItem
+							active={view.kind === 'recently_viewed'}
+							onClick={() => onNavigate({ kind: 'recently_viewed' })}
+							onContextMenu={navHideContextMenu(
+								'recently_viewed',
+								'Recently viewed',
+								setNavItemMenu,
+							)}
+							icon="👁"
+							label="Recently viewed"
 						/>
 					)}
 				</Section>
@@ -324,27 +442,50 @@ export function Sidebar({
 										if (newListName.trim()) void handleCreateList(false);
 										else setCreatingList(false);
 									}}
-									placeholder="List name"
+									placeholder="List name (start with an emoji to set an icon)"
 									className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-600"
 								/>
 							</div>
 						)}
 						{lists?.map((l) => {
 							const active = view.kind === 'list' && view.slug === l.slug;
+							const isRenaming = renamingListId === l.id;
+							if (isRenaming) {
+								return (
+									<div key={l.id} className="px-4 py-1.5">
+										<input
+											autoFocus
+											type="text"
+											value={renameValue}
+											onChange={(e) => setRenameValue(e.target.value)}
+											onKeyDown={(e) => {
+												if (e.key === 'Enter') void handleRenameSubmit(l);
+												if (e.key === 'Escape') {
+													setRenamingListId(null);
+													setRenameValue('');
+												}
+											}}
+											onBlur={() => {
+												if (renameValue.trim())
+													void handleRenameSubmit(l);
+												else setRenamingListId(null);
+											}}
+											placeholder="List name (emoji prefix sets icon)"
+											className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-600"
+										/>
+									</div>
+								);
+							}
 							return (
 								<NavItem
 									key={l.id}
 									active={active}
 									onClick={() => onNavigate({ kind: 'list', slug: l.slug })}
-									onContextMenu={
-										l.is_system
-											? undefined
-											: (e) => {
-													e.preventDefault();
-													e.stopPropagation();
-													setListMenu({ x: e.clientX, y: e.clientY, list: l });
-												}
-									}
+									onContextMenu={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										setListMenu({ x: e.clientX, y: e.clientY, list: l });
+									}}
 									icon={l.emoji ?? '📋'}
 									label={l.name}
 									count={l.count ?? 0}
@@ -452,6 +593,17 @@ export function Sidebar({
 					onClose={() => setListMenu(null)}
 					items={[
 						{
+							label: 'Rename',
+							onClick: () => {
+								setRenameValue(
+									listMenu.list.emoji
+										? `${listMenu.list.emoji} ${listMenu.list.name}`
+										: listMenu.list.name,
+								);
+								setRenamingListId(listMenu.list.id);
+							},
+						},
+						{
 							label: `Delete "${listMenu.list.name}"`,
 							onClick: () => handleDeleteList(listMenu.list),
 							danger: true,
@@ -502,6 +654,21 @@ export function Sidebar({
 					]}
 				/>
 			)}
+
+			{navItemMenu && (
+				<ContextMenu
+					x={navItemMenu.x}
+					y={navItemMenu.y}
+					onClose={() => setNavItemMenu(null)}
+					items={[
+						{
+							label: `Hide "${navItemMenu.label}" from sidebar`,
+							onClick: () => hideNavItem(navItemMenu.key),
+							danger: true,
+						},
+					]}
+				/>
+			)}
 		</aside>
 	);
 }
@@ -519,6 +686,12 @@ function SectionAction({
 		<button
 			type="button"
 			onClick={onClick}
+			// preventDefault on mousedown stops the click from stealing
+			// focus from any open input. Without it, clicking "Cancel"
+			// while an inline create input is focused fires the input's
+			// onBlur first (which sets state to closed), then the button's
+			// onClick fires and toggles back to open.
+			onMouseDown={(e) => e.preventDefault()}
 			title={title}
 			className="-mr-2 text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded px-2 py-0.5 font-semibold"
 		>
@@ -553,6 +726,34 @@ function Section({
 	);
 }
 
+/**
+ * If the string starts with one emoji glyph followed by whitespace,
+ * return { emoji, name: rest }. Otherwise return { emoji: undefined, name }.
+ * Uses the Unicode `\p{Extended_Pictographic}` property so flag/joiner
+ * sequences and skin-tone modifiers all match cleanly.
+ */
+function splitLeadingEmoji(s: string): {
+	emoji: string | undefined;
+	name: string;
+} {
+	const m = s.match(/^(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?)\s+(.+)$/u);
+	if (m) return { emoji: m[1], name: m[2].trim() };
+	return { emoji: undefined, name: s };
+}
+
+/** Build a right-click handler that opens the "hide from sidebar" menu. */
+function navHideContextMenu(
+	key: SidebarKey,
+	label: string,
+	setMenu: (m: { x: number; y: number; key: SidebarKey; label: string }) => void,
+) {
+	return (e: React.MouseEvent<HTMLButtonElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setMenu({ x: e.clientX, y: e.clientY, key, label });
+	};
+}
+
 function NavItem({
 	active,
 	onClick,
@@ -564,7 +765,7 @@ function NavItem({
 	active: boolean;
 	onClick: () => void;
 	onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
-	icon: string;
+	icon: string | null;
 	label: string;
 	count?: number;
 }) {
@@ -579,7 +780,9 @@ function NavItem({
 					: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
 			}`}
 		>
-			<span className="w-5 text-center text-sm leading-none">{icon}</span>
+			{icon !== null && (
+				<span className="w-5 text-center text-sm leading-none">{icon}</span>
+			)}
 			<span className="flex-1 truncate">{label}</span>
 			{count !== undefined && (
 				<span className="text-[10px] text-zinc-500 tabular-nums">{count}</span>
