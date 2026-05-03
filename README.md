@@ -86,3 +86,10 @@ ready, you'll see a banner asking to restart. No need to re-download.
 
 Architecture, schema, API endpoints, and dev workflow live in
 [`CLAUDE.md`](./CLAUDE.md). Pull requests welcome.
+
+## License
+
+This is vibe-coded AI slop I built for my own use and threw up here
+in case anyone else finds it useful. I genuinely don't know what the
+"right" license for that is — but if I have to pick one, **MIT**.
+Take it, fork it, ship it, ignore it, whatever.
