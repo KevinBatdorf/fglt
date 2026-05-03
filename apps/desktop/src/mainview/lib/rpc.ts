@@ -56,9 +56,9 @@ interface SegRpcShape {
 		dockerStop: (
 			params: SegRPC['bun']['requests']['dockerStop']['params'],
 		) => Promise<SegRPC['bun']['requests']['dockerStop']['response']>;
-		dockerPull: (
-			params: SegRPC['bun']['requests']['dockerPull']['params'],
-		) => Promise<SegRPC['bun']['requests']['dockerPull']['response']>;
+		dockerRebuild: (
+			params: SegRPC['bun']['requests']['dockerRebuild']['params'],
+		) => Promise<SegRPC['bun']['requests']['dockerRebuild']['response']>;
 	};
 	send: Record<string, never>;
 }
@@ -131,7 +131,8 @@ function createStubRpc(): SegRpcShape {
 			dockerStatus: () => Promise.resolve({ kind: 'running' as const }),
 			dockerStart: () => Promise.resolve({ ok: false, error: 'browser stub' }),
 			dockerStop: () => Promise.resolve({ ok: false, error: 'browser stub' }),
-			dockerPull: () => Promise.resolve({ ok: false, error: 'browser stub' }),
+			dockerRebuild: () =>
+				Promise.resolve({ ok: false, error: 'browser stub' }),
 		},
 		send: {},
 	};

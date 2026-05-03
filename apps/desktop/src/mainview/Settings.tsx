@@ -739,14 +739,15 @@ function SystemStatusSection() {
  *
  * Status comes in as a prop from App.tsx (which already polls every 3s
  * while API is unreachable, then once on each /health success). The
- * three buttons fan out to dockerStart / dockerStop / dockerPull RPCs.
+ * three buttons fan out to dockerStart / dockerStop / dockerRebuild
+ * RPCs.
  */
 function BackendSection({ docker }: { docker: DockerStatus | null }) {
-	const [busy, setBusy] = useState<null | 'start' | 'stop' | 'pull'>(null);
+	const [busy, setBusy] = useState<null | 'start' | 'stop' | 'rebuild'>(null);
 	const [msg, setMsg] = useState<string | null>(null);
 
 	async function call(
-		op: 'start' | 'stop' | 'pull',
+		op: 'start' | 'stop' | 'rebuild',
 		fn: () => Promise<{ ok: boolean; error?: string }>,
 		successMsg: string,
 	) {
@@ -838,17 +839,17 @@ function BackendSection({ docker }: { docker: DockerStatus | null }) {
 					<button
 						type="button"
 						disabled={!dockerUsable || busy !== null}
-						title="docker compose pull && up -d — refresh images and restart containers"
+						title="docker compose build && up -d --force-recreate — rebuild the API image from the bundled source and recreate containers. Normally fires automatically after the desktop app updates; click here to force a manual rebuild."
 						onClick={() =>
 							call(
-								'pull',
-								() => rpc.request.dockerPull({}),
-								'Pulled latest images and restarted.',
+								'rebuild',
+								() => rpc.request.dockerRebuild({}),
+								'Rebuilt and restarted backend.',
 							)
 						}
 						className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
 					>
-						{busy === 'pull' ? 'Pulling…' : 'Pull updates'}
+						{busy === 'rebuild' ? 'Rebuilding…' : 'Update backend'}
 					</button>
 				</div>
 				{msg && (

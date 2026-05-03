@@ -23,8 +23,8 @@ import type {
 	UpdaterStatus,
 } from '../shared/types';
 import {
-	pullBackend,
 	dockerStatus as readDockerStatus,
+	rebuildBackend,
 	startBackend,
 	stopBackend,
 } from './docker';
@@ -295,7 +295,10 @@ export function defineSegRpc() {
 				dockerStatus: (): DockerStatus => readDockerStatus(),
 				dockerStart: () => startBackend(),
 				dockerStop: () => stopBackend(),
-				dockerPull: () => pullBackend(),
+				// Renamed from `dockerPull` — we build locally now, no
+				// registry pulls. The webview still calls this to get the
+				// "Update backend" button's behaviour.
+				dockerRebuild: () => rebuildBackend(),
 			},
 			messages: {},
 		},

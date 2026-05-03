@@ -4,24 +4,29 @@
 # the desktop app's Settings → Configuration page (persisted to the
 # `app_settings` Postgres table).
 #
+# IMAGES ARE BUILT LOCALLY. The desktop app bundles the backend source
+# (Dockerfile + src/ + scripts/ + migrations/ + …) next to the binary
+# under `assets/backend/`, and this compose file's `build: ./backend`
+# directives target it. First launch builds the API image (~3 min,
+# one-time); subsequent launches reuse the cached layers and start
+# instantly. No Docker registry needed — nothing to publish, nothing
+# to keep public.
+#
 # Defaults are baked in:
 #   - API at http://localhost:3110
 #   - Postgres at localhost:5532 (host) / 5432 (container)
 #   - All cron jobs run on their normal schedules; they no-op cleanly
 #     until the user fills in the matching key in Settings.
 #
-# Usage:
+# Usage (the desktop app runs these for you — but for power users):
 #   docker compose -f docker-compose.consumer.yml up -d
 #   docker compose -f docker-compose.consumer.yml down
-#
-# Pulls prebuilt images from GHCR — does NOT require a clone of the
-# source repo. Update by re-pulling the image tag:
-#   docker compose -f docker-compose.consumer.yml pull
-#   docker compose -f docker-compose.consumer.yml up -d
 # =====================================================================
 
 services:
   postgres:
+    # The only image we pull from a registry. pgvector publishes their
+    # combined image on Docker Hub; no auth needed.
     image: pgvector/pgvector:pg17
     container_name: fglt-postgres
     shm_size: 1g
@@ -42,7 +47,11 @@ services:
       start_period: 10s
 
   api:
-    image: ghcr.io/kevinbatdorf/fglt:latest
+    # Build the FGLT image locally from the source bundled with the
+    # desktop binary. The `image:` name lets the cron services below
+    # reference the exact same image without re-building.
+    build: ./backend
+    image: fglt-app:local
     container_name: fglt-api
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
@@ -71,8 +80,12 @@ services:
       retries: 6
       start_period: 15s
 
+  # All cron services share the same locally-built image — `image:` only
+  # (no `build:`) so compose reuses what `api` built instead of building
+  # five separate copies. `depends_on: api` ensures the build happens
+  # before they start.
   syncer:
-    image: ghcr.io/kevinbatdorf/fglt:latest
+    image: fglt-app:local
     container_name: fglt-syncer
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
@@ -83,10 +96,10 @@ services:
     command: sh -c 'bun run /app/scripts/sync-owned.ts || true; echo "$$SYNC_CRON /usr/local/bin/bun run /app/scripts/sync-owned.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
     restart: unless-stopped
     depends_on:
-      - postgres
+      - api
 
   enricher:
-    image: ghcr.io/kevinbatdorf/fglt:latest
+    image: fglt-app:local
     container_name: fglt-enricher
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
@@ -97,10 +110,10 @@ services:
       - 'host.docker.internal:host-gateway'
     restart: unless-stopped
     depends_on:
-      - postgres
+      - api
 
   steamspy-refresher:
-    image: ghcr.io/kevinbatdorf/fglt:latest
+    image: fglt-app:local
     container_name: fglt-steamspy-refresher
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
@@ -111,10 +124,10 @@ services:
     command: sh -c 'bun run /app/scripts/refresh-steamspy.ts || true; echo "$$STEAMSPY_CRON /usr/local/bin/bun run /app/scripts/refresh-steamspy.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
     restart: unless-stopped
     depends_on:
-      - postgres
+      - api
 
   youtube-syncer:
-    image: ghcr.io/kevinbatdorf/fglt:latest
+    image: fglt-app:local
     container_name: fglt-youtube-syncer
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
@@ -125,7 +138,7 @@ services:
     command: sh -c 'bun run /app/scripts/sync-youtube.ts || true; echo "$$YOUTUBE_CRON /usr/local/bin/bun run /app/scripts/sync-youtube.ts" > /tmp/crontab && exec /usr/local/bin/supercronic /tmp/crontab'
     restart: unless-stopped
     depends_on:
-      - postgres
+      - api
 
 volumes:
   fglt-pgdata:

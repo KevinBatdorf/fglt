@@ -84,15 +84,19 @@ export function SetupGuide({ onOpenSettings }: Props) {
 							download, no terminal, no <code>docker compose</code> commands.
 						</p>
 						<p className="text-xs text-zinc-500">
-							Behind the scenes: the app ships a{' '}
-							<code>docker-compose.consumer.yml</code> bundled with the binary
-							and runs <code>docker compose up -d</code> against it on first
-							launch. First start downloads ~200&nbsp;MB of images (Postgres +
-							the API), so it can take a minute on slow connections. After that,
-							launches are instant. You can <strong>Stop backend</strong> from{' '}
+							Behind the scenes: the app bundles its own backend (Postgres + API
+							+ cron workers) and runs <code>docker compose up -d</code> for
+							you.{' '}
+							<strong>
+								First launch builds the API image on your machine — this takes
+								~3 minutes one-time
+							</strong>{' '}
+							while Docker grabs the Postgres image and runs{' '}
+							<code>bun install</code>. Every launch after this is instant. You
+							can <strong>Stop backend</strong> from{' '}
 							<strong>Settings → Backend</strong> when you want to free
-							resources, or <strong>Pull updates</strong> there to grab the
-							latest images manually.
+							resources, or <strong>Update backend</strong> there to force a
+							rebuild.
 						</p>
 					</>
 				}

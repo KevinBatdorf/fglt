@@ -269,8 +269,9 @@ function HealthMessage({ state }: { state: BannerState }) {
 					<span className="inline-block animate-spin mr-2" aria-hidden>
 						⟳
 					</span>
-					<strong>Starting backend…</strong> First start can take a minute while
-					Docker pulls images.
+					<strong>Starting backend…</strong> First launch builds the API image
+					locally — this is a one-time ~3 min setup. Every launch after this is
+					instant.
 				</>
 			);
 		case 'backend_stopped':

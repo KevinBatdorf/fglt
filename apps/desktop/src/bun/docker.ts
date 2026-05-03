@@ -189,20 +189,31 @@ export function stopBackend(): { ok: boolean; error?: string } {
 }
 
 /**
- * `docker compose pull` (refresh image tags) followed by `up -d`
- * (recreate containers using the new images). Used both for the
- * Settings → Backend "Pull updates" button and the post-app-update
- * auto-pull. Returns once both phases finish — can take several
- * minutes if the user has a slow connection.
+ * `docker compose build` (force-rebuild the API image from the bundled
+ * source) followed by `up -d --force-recreate` (replace the running
+ * containers with ones using the freshly-built image).
+ *
+ * Triggered by:
+ *   - Settings → Backend → "Update backend" button
+ *   - Post-app-update auto-rebuild (when the desktop binary version
+ *     changes, the bundled source changed too — we rebuild so the API
+ *     image keeps pace with the binary).
+ *
+ * Can take several minutes on slow connections (the build downloads
+ * the bun:debian base image + runs `bun install`). Layer caching makes
+ * subsequent rebuilds fast (~10s) when only the JS source changed.
  */
-export function pullBackend(): { ok: boolean; error?: string } {
+export function rebuildBackend(): { ok: boolean; error?: string } {
 	const compose = getComposeFilePath();
-	const pull = dockerRun(['compose', '-f', compose, 'pull'], 600_000);
-	if (!pull.ok) {
-		lastError = (pull.stderr || pull.stdout || 'pull failed').trim();
+	const build = dockerRun(['compose', '-f', compose, 'build'], 600_000);
+	if (!build.ok) {
+		lastError = (build.stderr || build.stdout || 'build failed').trim();
 		return { ok: false, error: lastError };
 	}
-	const up = dockerRun(['compose', '-f', compose, 'up', '-d'], 120_000);
+	const up = dockerRun(
+		['compose', '-f', compose, 'up', '-d', '--force-recreate'],
+		120_000,
+	);
 	if (!up.ok) {
 		lastError = (up.stderr || up.stdout || 'up -d failed').trim();
 		return { ok: false, error: lastError };

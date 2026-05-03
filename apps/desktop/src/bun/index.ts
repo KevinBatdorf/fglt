@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserWindow, Updater } from 'electrobun/bun';
-import { dockerStatus, pullBackend, startBackend } from './docker';
+import { dockerStatus, rebuildBackend, startBackend } from './docker';
 import {
 	defineSegRpc,
 	registerMainWindow,
@@ -155,19 +155,21 @@ async function bootstrapDocker(): Promise<void> {
 		if (!r.ok) console.warn('[docker] start failed:', r.error);
 	}
 
-	// Version-bump detection — pulls fresh images after the desktop
-	// binary updates. Done after the start step so a fresh-install user
-	// doesn't pay the pull cost twice (the `up -d` already grabbed the
-	// images).
+	// Version-bump detection — rebuilds the API image after the desktop
+	// binary updates. The bundled backend source under `assets/backend/`
+	// changed too (it shipped inside the new binary), so the existing
+	// container is running stale code until we rebuild. Done after the
+	// start step so fresh-install users don't pay the cost twice (the
+	// initial `up -d` already built the image).
 	try {
 		const current = await Updater.localInfo.version();
 		const previous = await readLastVersion();
 		if (previous && current && previous !== current) {
 			console.log(
-				`[docker] version changed ${previous} → ${current}, pulling updated images`,
+				`[docker] version changed ${previous} → ${current}, rebuilding API image`,
 			);
-			const r = pullBackend();
-			if (!r.ok) console.warn('[docker] pull failed:', r.error);
+			const r = rebuildBackend();
+			if (!r.ok) console.warn('[docker] rebuild failed:', r.error);
 		}
 		if (current) await writeLastVersion(current);
 	} catch (e) {

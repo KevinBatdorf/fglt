@@ -15,28 +15,22 @@ backlog.
 
 ## Install
 
-You'll need **Docker** (for the local database + sync workers) and a
-free **Steam API key**. No clone of the repo, no `.env`, no shell config.
+Three steps. No clone, no `.env`, no terminal commands.
 
-1. **Install Docker.** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-   on Windows / macOS or Docker Engine on Linux. Make sure it's *running*
-   — Docker Desktop doesn't auto-start by default.
+1. **Install Docker Desktop.** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+   for Windows / macOS, or Docker Engine for Linux. Make sure it's
+   *running* — Docker Desktop doesn't auto-start by default.
 
-2. **Start the backend stack.** Download
-   [`docker-compose.consumer.yml`](https://github.com/KevinBatdorf/fglt/releases/latest/download/docker-compose.consumer.yml)
-   from the latest release, save it anywhere, then from that folder:
-   ```bash
-   docker compose -f docker-compose.consumer.yml up -d
-   ```
-   This pulls prebuilt images and runs Postgres + the API + the cron
-   workers on `localhost:3110` and `localhost:5532`. No `.env` needed.
-
-3. **Download the desktop app** for your OS from
+2. **Download the desktop app** for your OS from
    [the latest release](https://github.com/KevinBatdorf/fglt/releases/latest)
-   and launch it.
+   and launch it. The app brings up its own Postgres + API + cron
+   workers via Docker on first launch — **first start takes ~3 min
+   one-time** while it builds the API image locally on your machine.
+   Subsequent launches are instant.
 
-4. **Add your Steam credentials.** On first launch the app opens straight
-   to **Settings → Configuration** and stays there until you fill in:
+3. **Add your Steam credentials.** Once the backend is up, the app
+   opens to **Settings → Configuration** and stays there until you
+   fill in:
    - **Steam API key** — free at <https://steamcommunity.com/dev/apikey>
    - **Steam ID (64-bit)** — paste your Steam profile URL into <https://steamid.io/>
 

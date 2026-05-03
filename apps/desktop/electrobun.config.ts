@@ -16,6 +16,12 @@ export default {
 			// Copied here from the repo root by `bun run build:assets`.
 			'assets/docker-compose.consumer.yml':
 				'assets/docker-compose.consumer.yml',
+			// Backend source (Dockerfile + src + scripts + migrations + init.sql
+			// + package.json + bun.lock) bundled by `scripts/bundle-backend.ts`
+			// so the consumer compose's `build: ./backend` directive resolves.
+			// We build the API image on the user's machine instead of pulling
+			// from a registry — no GHCR / Docker Hub publishing required.
+			'assets/backend': 'assets/backend',
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ['dist/**'],

@@ -1,0 +1,27 @@
+# Keep the build context lean — affects every `docker build` against
+# this dir, including the one the desktop app's bundled backend runs.
+node_modules
+data
+.git
+.github
+.env
+.env.local
+.env.example
+.vscode
+apps
+yaak
+skills
+.claude-plugin
+.claude
+dist
+build
+*.log
+*.test.ts
+*.test.tsx
+src/lib/_test
+docker-compose.yml
+docker-compose.consumer.yml
+README.md
+CLAUDE.md
+LICENSE
+biome.json

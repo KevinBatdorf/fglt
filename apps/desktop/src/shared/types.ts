@@ -137,7 +137,12 @@ export type SegRPC = {
 				params: Record<string, never>;
 				response: { ok: boolean; error?: string };
 			};
-			dockerPull: {
+			/**
+			 * Force-rebuild the API image from the bundled source and
+			 * recreate containers. Replaces the old `dockerPull` (we
+			 * build locally now — no registry).
+			 */
+			dockerRebuild: {
 				params: Record<string, never>;
 				response: { ok: boolean; error?: string };
 			};
