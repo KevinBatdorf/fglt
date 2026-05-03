@@ -12,3 +12,8 @@ bun.lock
 .playwright-mcp/
 seg-home.png
 *.screenshot.png
+
+# Build artifact: copied from repo root by `apps/desktop/package.json`
+# build script so Electrobun can pick it up via `build.copy`. Canonical
+# version lives at the repo root.
+apps/desktop/assets/docker-compose.consumer.yml

@@ -75,32 +75,24 @@ export function SetupGuide({ onOpenSettings }: Props) {
 
 			<Step
 				n={3}
-				title="Start the backend stack"
+				title="Backend starts itself"
 				body={
 					<>
 						<p>
-							Grab the consumer compose file from the{' '}
-							<button
-								type="button"
-								onClick={() =>
-									rpc.request.openUrl({
-										url: 'https://github.com/KevinBatdorf/fglt/releases/latest',
-									})
-								}
-								className="underline hover:no-underline text-zinc-200"
-							>
-								latest release ↗
-							</button>{' '}
-							(it's named <code>docker-compose.consumer.yml</code>), then from
-							the folder you saved it in:
+							You don't need to do anything here — once Docker Desktop is
+							running, this app starts the backend stack on its own. Nothing to
+							download, no terminal, no <code>docker compose</code> commands.
 						</p>
-						<pre className="bg-zinc-950 border border-zinc-800 rounded-md p-3 text-[11px] text-zinc-300 overflow-x-auto">
-							{`docker compose -f docker-compose.consumer.yml up -d`}
-						</pre>
 						<p className="text-xs text-zinc-500">
-							This downloads the API + Postgres images and runs them on ports
-							3110 and 5532. Stop them later with{' '}
-							<code>docker compose -f docker-compose.consumer.yml down</code>.
+							Behind the scenes: the app ships a{' '}
+							<code>docker-compose.consumer.yml</code> bundled with the binary
+							and runs <code>docker compose up -d</code> against it on first
+							launch. First start downloads ~200&nbsp;MB of images (Postgres +
+							the API), so it can take a minute on slow connections. After that,
+							launches are instant. You can <strong>Stop backend</strong> from{' '}
+							<strong>Settings → Backend</strong> when you want to free
+							resources, or <strong>Pull updates</strong> there to grab the
+							latest images manually.
 						</p>
 					</>
 				}

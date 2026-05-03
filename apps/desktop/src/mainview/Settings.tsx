@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { UpdaterStatus } from '../shared/types';
+import type { DockerStatus, UpdaterStatus } from '../shared/types';
 import { GameImage } from './GameImage';
 import {
 	type ActivityResponse,
@@ -44,6 +44,11 @@ interface Props {
 	 * the next /health poll sees the values set.
 	 */
 	requiredMissing?: string[];
+	/**
+	 * Latest Docker stack snapshot. Used by BackendSection to render the
+	 * status line + enable/disable Start/Stop/Pull buttons.
+	 */
+	docker?: DockerStatus | null;
 }
 
 export function Settings({
@@ -51,6 +56,7 @@ export function Settings({
 	onStatsRefresh,
 	onSelect,
 	requiredMissing = [],
+	docker = null,
 }: Props) {
 	const [activity, setActivity] = useState<ActivityResponse | null>(null);
 	const [activityErr, setActivityErr] = useState<string | null>(null);
@@ -128,6 +134,8 @@ export function Settings({
 			</header>
 
 			<SystemStatusSection />
+
+			<BackendSection docker={docker} />
 
 			<ConfigurationSection requiredMissing={requiredMissing} />
 
@@ -721,6 +729,162 @@ function SystemStatusSection() {
 			<UpdatesSubsection />
 		</section>
 	);
+}
+
+/**
+ * Settings → Backend — manual control over the Docker stack the desktop
+ * app manages on the user's behalf. The auto-start path (in
+ * `bun/index.ts`) covers the boot case; this section is for anyone who
+ * wants to free resources, force a re-pull, or restart after a crash.
+ *
+ * Status comes in as a prop from App.tsx (which already polls every 3s
+ * while API is unreachable, then once on each /health success). The
+ * three buttons fan out to dockerStart / dockerStop / dockerPull RPCs.
+ */
+function BackendSection({ docker }: { docker: DockerStatus | null }) {
+	const [busy, setBusy] = useState<null | 'start' | 'stop' | 'pull'>(null);
+	const [msg, setMsg] = useState<string | null>(null);
+
+	async function call(
+		op: 'start' | 'stop' | 'pull',
+		fn: () => Promise<{ ok: boolean; error?: string }>,
+		successMsg: string,
+	) {
+		setBusy(op);
+		setMsg(null);
+		try {
+			const r = await fn();
+			setMsg(r.ok ? successMsg : `Failed: ${r.error ?? 'unknown'}`);
+		} catch (e) {
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	const status = docker?.kind ?? 'unknown';
+	const statusLabel = labelForDocker(status);
+	const isRunning = status === 'running';
+	const isStopped =
+		status === 'containers_stopped' || status === 'containers_missing';
+	const dockerUsable = status !== 'not_installed' && status !== 'daemon_down';
+
+	return (
+		<section>
+			<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
+				Backend
+			</h2>
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
+				<div className="flex items-baseline justify-between gap-3 flex-wrap">
+					<div>
+						<div className="text-sm font-medium">Local Docker stack</div>
+						<p className="text-xs text-zinc-500 mt-1">
+							The desktop app manages Postgres + the API + the cron workers via
+							Docker. Leaving the backend running is fine — idle cost is
+							~150&nbsp;MB RAM and the daily syncs keep firing in the
+							background.
+						</p>
+					</div>
+					<div className="text-xs tabular-nums">
+						Status:{' '}
+						<span
+							className={
+								isRunning
+									? 'text-emerald-300'
+									: isStopped
+										? 'text-amber-300'
+										: 'text-red-300'
+							}
+						>
+							{statusLabel}
+						</span>
+					</div>
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<button
+						type="button"
+						disabled={!dockerUsable || isRunning || busy !== null}
+						onClick={() =>
+							call(
+								'start',
+								() => rpc.request.dockerStart({}),
+								'Backend started.',
+							)
+						}
+						className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						{busy === 'start' ? 'Starting…' : 'Start backend'}
+					</button>
+					<button
+						type="button"
+						disabled={!dockerUsable || !isRunning || busy !== null}
+						onClick={() => {
+							if (
+								!confirm(
+									'Stop the backend? Background syncs and the API will be unavailable until you start it again.',
+								)
+							)
+								return;
+							void call(
+								'stop',
+								() => rpc.request.dockerStop({}),
+								'Backend stopped.',
+							);
+						}}
+						className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						{busy === 'stop' ? 'Stopping…' : 'Stop backend'}
+					</button>
+					<button
+						type="button"
+						disabled={!dockerUsable || busy !== null}
+						title="docker compose pull && up -d — refresh images and restart containers"
+						onClick={() =>
+							call(
+								'pull',
+								() => rpc.request.dockerPull({}),
+								'Pulled latest images and restarted.',
+							)
+						}
+						className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						{busy === 'pull' ? 'Pulling…' : 'Pull updates'}
+					</button>
+				</div>
+				{msg && (
+					<div className="text-xs text-zinc-400 font-mono break-words">
+						{msg}
+					</div>
+				)}
+				{!dockerUsable && (
+					<div className="text-xs text-amber-300">
+						{status === 'not_installed'
+							? "Docker isn't installed — see the Setup guide."
+							: "Docker Desktop isn't running — start it from your OS, then come back."}
+					</div>
+				)}
+			</div>
+		</section>
+	);
+}
+
+function labelForDocker(kind: string): string {
+	switch (kind) {
+		case 'running':
+			return 'Running';
+		case 'containers_stopped':
+			return 'Stopped';
+		case 'containers_missing':
+			return 'Not yet started';
+		case 'starting':
+			return 'Starting…';
+		case 'daemon_down':
+			return 'Docker not running';
+		case 'not_installed':
+			return 'Docker not installed';
+		default:
+			return 'Checking…';
+	}
 }
 
 /**

@@ -10,8 +10,9 @@
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
 		"hmr": "vite --port 5173",
 		"build:icons": "bun run scripts/build-icons.ts",
-		"build": "bun run build:icons && vite build && electrobun build --env=stable",
-		"build:canary": "bun run build:icons && vite build && electrobun build --env=canary"
+		"build:assets": "cp ../../docker-compose.consumer.yml assets/docker-compose.consumer.yml",
+		"build": "bun run build:icons && bun run build:assets && vite build && electrobun build --env=stable",
+		"build:canary": "bun run build:icons && bun run build:assets && vite build && electrobun build --env=canary"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",

@@ -47,6 +47,18 @@ interface SegRpcShape {
 		updaterApply: (
 			params: SegRPC['bun']['requests']['updaterApply']['params'],
 		) => Promise<SegRPC['bun']['requests']['updaterApply']['response']>;
+		dockerStatus: (
+			params: SegRPC['bun']['requests']['dockerStatus']['params'],
+		) => Promise<SegRPC['bun']['requests']['dockerStatus']['response']>;
+		dockerStart: (
+			params: SegRPC['bun']['requests']['dockerStart']['params'],
+		) => Promise<SegRPC['bun']['requests']['dockerStart']['response']>;
+		dockerStop: (
+			params: SegRPC['bun']['requests']['dockerStop']['params'],
+		) => Promise<SegRPC['bun']['requests']['dockerStop']['response']>;
+		dockerPull: (
+			params: SegRPC['bun']['requests']['dockerPull']['params'],
+		) => Promise<SegRPC['bun']['requests']['dockerPull']['response']>;
 	};
 	send: Record<string, never>;
 }
@@ -114,6 +126,12 @@ function createStubRpc(): SegRpcShape {
 					checking: false,
 				}),
 			updaterApply: () => Promise.resolve({ ok: false, error: 'browser stub' }),
+			// Docker stubs report a friendly "running" so the in-browser
+			// preview doesn't paint a perpetual "Docker not installed" banner.
+			dockerStatus: () => Promise.resolve({ kind: 'running' as const }),
+			dockerStart: () => Promise.resolve({ ok: false, error: 'browser stub' }),
+			dockerStop: () => Promise.resolve({ ok: false, error: 'browser stub' }),
+			dockerPull: () => Promise.resolve({ ok: false, error: 'browser stub' }),
 		},
 		send: {},
 	};

@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react';
-import type { UpdaterStatus } from '../shared/types';
+import type { DockerStatus, UpdaterStatus } from '../shared/types';
 import { api, type HealthStatus } from './lib/api';
 import { rpc } from './lib/rpc';
 
 /**
- * Top-of-window banner that surfaces setup gaps so a user with Docker
- * down (or a missing Steam key) sees what's wrong instead of a silent
- * empty UI. Polls /health every 30s. The first reachable state wins,
- * shown in this priority order:
+ * Top-of-window banner that surfaces setup gaps so a user sees what's
+ * wrong instead of a silent empty UI. Polls /health every 30s and
+ * receives `docker` snapshots from App.tsx (which polls the bun side
+ * on a 3s cadence whenever the API is unreachable).
  *
- *   1. API unreachable        — red, "Is Docker running?"
- *   2. DB down                — red, "API up but Postgres isn't"
- *   3. Missing STEAM_API_KEY  — amber, link to dev page
- *   4. Missing STEAM_ID       — amber
- *   5. Empty library          — blue, suggest manual sync
- *   6. All healthy            — no banner
+ * Priority (first match wins):
+ *
+ *   1. Docker not installed     — red, link to setup guide
+ *   2. Docker daemon down       — amber, "start Docker Desktop"
+ *   3. Backend starting         — sky, spinner
+ *   4. Backend stopped          — amber, [Start backend] button
+ *   5. API unreachable (other)  — red, retry / setup guide
+ *   6. DB down                  — red
+ *   7. Missing STEAM_API_KEY    — amber, link to Settings
+ *   8. Missing STEAM_ID         — amber
+ *   9. Empty library            — sky
+ *  10. Update ready             — emerald
+ *  11. All healthy              — no banner
  *
  * Dismiss is per-session (sessionStorage); a new app launch shows it
  * again if the underlying problem is still there.
@@ -25,6 +32,10 @@ const DISMISS_KEY = 'seg.health.dismissedKey';
 
 type BannerState =
 	| { kind: 'ok' }
+	| { kind: 'docker_not_installed' }
+	| { kind: 'docker_daemon_down' }
+	| { kind: 'backend_starting' }
+	| { kind: 'backend_stopped' }
 	| { kind: 'unreachable' }
 	| { kind: 'db_down'; health: HealthStatus }
 	| { kind: 'missing_steam_key'; health: HealthStatus }
@@ -35,8 +46,24 @@ type BannerState =
 function deriveState(
 	health: HealthStatus | null,
 	reachable: boolean,
+	docker: DockerStatus | null,
 	updater: UpdaterStatus | null,
 ): BannerState {
+	// Docker-related states always win over plain "unreachable" — they
+	// give the user something concrete to do, vs. a generic "API is
+	// down." Once docker reports `running` we fall through to the API/
+	// health checks.
+	if (docker) {
+		if (docker.kind === 'not_installed')
+			return { kind: 'docker_not_installed' };
+		if (docker.kind === 'daemon_down') return { kind: 'docker_daemon_down' };
+		if (docker.kind === 'starting') return { kind: 'backend_starting' };
+		if (
+			docker.kind === 'containers_missing' ||
+			docker.kind === 'containers_stopped'
+		)
+			return { kind: 'backend_stopped' };
+	}
 	if (!reachable) return { kind: 'unreachable' };
 	if (!health) return { kind: 'unreachable' };
 	if (health.db === 'down') return { kind: 'db_down', health };
@@ -61,12 +88,20 @@ interface BannerProps {
 	 * navigate to even when nothing else is reachable.
 	 */
 	onOpenSetupGuide?: () => void;
+	/**
+	 * Latest Docker stack snapshot from App.tsx. Lets the banner show
+	 * actionable Docker-aware messages ("Docker isn't installed",
+	 * "Backend stopped — Start backend") instead of a generic
+	 * "API unreachable."
+	 */
+	docker?: DockerStatus | null;
 }
 
-export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
+export function HealthBanner({ onOpenSetupGuide, docker }: BannerProps = {}) {
 	const [health, setHealth] = useState<HealthStatus | null>(null);
 	const [reachable, setReachable] = useState(true);
 	const [updater, setUpdater] = useState<UpdaterStatus | null>(null);
+	const [busy, setBusy] = useState(false);
 	const [dismissed, setDismissed] = useState<string | null>(() => {
 		try {
 			return sessionStorage.getItem(DISMISS_KEY);
@@ -105,12 +140,16 @@ export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 		return () => clearInterval(t);
 	}, []);
 
-	const state = deriveState(health, reachable, updater);
+	const state = deriveState(health, reachable, docker ?? null, updater);
 	if (state.kind === 'ok') return null;
 	if (dismissed === dismissKeyFor(state)) return null;
 
 	const variant: Record<BannerState['kind'], string> = {
 		ok: '',
+		docker_not_installed: 'bg-red-950/80 border-red-800 text-red-100',
+		docker_daemon_down: 'bg-amber-950/80 border-amber-800 text-amber-100',
+		backend_starting: 'bg-sky-950/80 border-sky-800 text-sky-100',
+		backend_stopped: 'bg-amber-950/80 border-amber-800 text-amber-100',
 		unreachable: 'bg-red-950/80 border-red-800 text-red-100',
 		db_down: 'bg-red-950/80 border-red-800 text-red-100',
 		missing_steam_key: 'bg-amber-950/80 border-amber-800 text-amber-100',
@@ -120,6 +159,18 @@ export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 	};
 
 	const isUpdateReady = state.kind === 'update_ready';
+	const isStarting = state.kind === 'backend_starting';
+	const isStopped = state.kind === 'backend_stopped';
+
+	async function handleStartBackend() {
+		setBusy(true);
+		try {
+			const r = await rpc.request.dockerStart({});
+			if (!r.ok) console.warn('docker start failed', r.error);
+		} finally {
+			setBusy(false);
+		}
+	}
 
 	return (
 		<div
@@ -128,13 +179,25 @@ export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 			<div className="flex-1 leading-relaxed">
 				<HealthMessage state={state} />
 			</div>
-			{state.kind === 'unreachable' && onOpenSetupGuide && (
+			{(state.kind === 'unreachable' ||
+				state.kind === 'docker_not_installed') &&
+				onOpenSetupGuide && (
+					<button
+						type="button"
+						onClick={onOpenSetupGuide}
+						className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+					>
+						Open setup guide ↗
+					</button>
+				)}
+			{isStopped && (
 				<button
 					type="button"
-					onClick={onOpenSetupGuide}
-					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+					onClick={() => void handleStartBackend()}
+					disabled={busy}
+					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap disabled:opacity-50"
 				>
-					Open setup guide ↗
+					{busy ? 'Starting…' : 'Start backend'}
 				</button>
 			)}
 			{isUpdateReady ? (
@@ -150,7 +213,10 @@ export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 				>
 					Restart now
 				</button>
-			) : (
+			) : isStarting ? // No retry/dismiss while we're actively starting — the
+			// docker-status poll will flip the banner to whatever comes
+			// next (running → banner disappears, stopped → "Start backend").
+			null : (
 				<button
 					type="button"
 					onClick={() => void pollHealth()}
@@ -159,28 +225,61 @@ export function HealthBanner({ onOpenSetupGuide }: BannerProps = {}) {
 					Retry
 				</button>
 			)}
-			<button
-				type="button"
-				onClick={() => {
-					const k = dismissKeyFor(state);
-					try {
-						sessionStorage.setItem(DISMISS_KEY, k);
-					} catch {
-						/* ignore */
-					}
-					setDismissed(k);
-				}}
-				className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
-				title="Hide for this session"
-			>
-				{isUpdateReady ? 'Later' : 'Dismiss'}
-			</button>
+			{!isStarting && (
+				<button
+					type="button"
+					onClick={() => {
+						const k = dismissKeyFor(state);
+						try {
+							sessionStorage.setItem(DISMISS_KEY, k);
+						} catch {
+							/* ignore */
+						}
+						setDismissed(k);
+					}}
+					className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap"
+					title="Hide for this session"
+				>
+					{isUpdateReady ? 'Later' : 'Dismiss'}
+				</button>
+			)}
 		</div>
 	);
 }
 
 function HealthMessage({ state }: { state: BannerState }) {
 	switch (state.kind) {
+		case 'docker_not_installed':
+			return (
+				<>
+					<strong>Docker isn't installed.</strong> The app needs Docker Desktop
+					to run its local database — the setup guide has links per OS.
+				</>
+			);
+		case 'docker_daemon_down':
+			return (
+				<>
+					<strong>Docker isn't running.</strong> Start Docker Desktop — the app
+					will connect automatically.
+				</>
+			);
+		case 'backend_starting':
+			return (
+				<>
+					<span className="inline-block animate-spin mr-2" aria-hidden>
+						⟳
+					</span>
+					<strong>Starting backend…</strong> First start can take a minute while
+					Docker pulls images.
+				</>
+			);
+		case 'backend_stopped':
+			return (
+				<>
+					<strong>Backend is stopped.</strong> Click "Start backend" to bring it
+					back up. (Background syncs don't run while it's down.)
+				</>
+			);
 		case 'unreachable':
 			return (
 				<>

@@ -31,6 +31,34 @@ export interface RefreshResult {
 	sources: Record<string, { status: string; detail?: unknown }>;
 }
 
+/**
+ * Snapshot of the bundled Docker stack from the desktop's perspective.
+ * The desktop app shells out to `docker` on the user's behalf so they
+ * never need a terminal — this union is what those helpers return.
+ *
+ *   not_installed       — docker CLI isn't on PATH (and not at the
+ *                         Docker Desktop default install path on Win).
+ *   daemon_down         — CLI present, daemon not responding (Docker
+ *                         Desktop is closed).
+ *   containers_missing  — daemon up, fglt-* containers were never
+ *                         created (fresh-install case).
+ *   containers_stopped  — containers exist but aren't running (user
+ *                         clicked "Stop backend" in Settings, or they
+ *                         crashed).
+ *   starting            — we just kicked off `up -d`; the timestamp
+ *                         (epoch ms) is included so the UI can time
+ *                         out the spinner.
+ *   running             — fglt-api container is up; the API will
+ *                         respond shortly if it isn't already.
+ */
+export type DockerStatus =
+	| { kind: 'not_installed' }
+	| { kind: 'daemon_down' }
+	| { kind: 'containers_missing' }
+	| { kind: 'containers_stopped' }
+	| { kind: 'starting'; since: number }
+	| { kind: 'running' };
+
 /** Snapshot of the auto-updater's polling state. */
 export interface UpdaterStatus {
 	currentVersion: string | null;
@@ -94,6 +122,22 @@ export type SegRPC = {
 				response: UpdaterStatus;
 			};
 			updaterApply: {
+				params: Record<string, never>;
+				response: { ok: boolean; error?: string };
+			};
+			dockerStatus: {
+				params: Record<string, never>;
+				response: DockerStatus;
+			};
+			dockerStart: {
+				params: Record<string, never>;
+				response: { ok: boolean; error?: string };
+			};
+			dockerStop: {
+				params: Record<string, never>;
+				response: { ok: boolean; error?: string };
+			};
+			dockerPull: {
 				params: Record<string, never>;
 				response: { ok: boolean; error?: string };
 			};

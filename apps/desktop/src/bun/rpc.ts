@@ -15,12 +15,19 @@ import {
 	Utils,
 } from 'electrobun/bun';
 import type {
+	DockerStatus,
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
 	SegRPC,
 	UpdaterStatus,
 } from '../shared/types';
+import {
+	pullBackend,
+	dockerStatus as readDockerStatus,
+	startBackend,
+	stopBackend,
+} from './docker';
 import { epicLaunchUri, getEpicInstalled } from './launchers/epic';
 import { getGogInstalled, gogLaunchUri } from './launchers/gog';
 import {
@@ -279,6 +286,16 @@ export function defineSegRpc() {
 						};
 					}
 				},
+
+				// ----- Docker stack control --------------------------------
+				// All four are thin wrappers around `bun/docker.ts`. The
+				// React side calls `dockerStatus` on a poll while the API
+				// is unreachable; the start/stop/pull handlers are wired
+				// to buttons in HealthBanner + Settings → Backend.
+				dockerStatus: (): DockerStatus => readDockerStatus(),
+				dockerStart: () => startBackend(),
+				dockerStop: () => stopBackend(),
+				dockerPull: () => pullBackend(),
 			},
 			messages: {},
 		},

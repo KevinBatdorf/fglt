@@ -11,6 +11,11 @@ export default {
 		copy: {
 			'dist/index.html': 'views/mainview/index.html',
 			'dist/assets': 'views/mainview/assets',
+			// Bundle the consumer compose file next to the binary so the
+			// app can manage the Docker stack itself (no terminal required).
+			// Copied here from the repo root by `bun run build:assets`.
+			'assets/docker-compose.consumer.yml':
+				'assets/docker-compose.consumer.yml',
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ['dist/**'],

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InstalledIndex } from '../shared/types';
+import type { DockerStatus, InstalledIndex } from '../shared/types';
 import { AllGames } from './AllGames';
 import { Discover } from './Discover';
 import { GameDetail } from './GameDetail';
@@ -67,15 +67,19 @@ function App() {
 	const [detailGameName, setDetailGameName] = useState<string | null>(null);
 	const [vibesRefreshing, setVibesRefreshing] = useState(false);
 	// Lockout state — lifted out of HealthBanner so the Sidebar + Settings
-	// can both react to it. `locked` collapses two cases into one prop:
+	// can both react to it. `locked` collapses three cases into one prop:
 	//   1. required keys (STEAM_API_KEY, STEAM_ID) aren't set
-	//   2. the API itself is unreachable (Docker down)
-	// In both cases the user can't usefully click anything except Settings
-	// and Setup Guide, so the rest of the sidebar is dimmed.
+	//   2. the API itself is unreachable
+	//   3. the Docker stack isn't fully `running` (covers: not_installed,
+	//      daemon_down, containers_missing/stopped, starting)
+	// In any of those, the user can't usefully click anything except
+	// Settings and Setup Guide, so the rest of the sidebar is dimmed.
 	const [health, setHealth] = useState<HealthStatus | null>(null);
 	const [apiReachable, setApiReachable] = useState(true);
+	const [docker, setDocker] = useState<DockerStatus | null>(null);
 	const requiredMissing = health?.required_missing ?? [];
-	const locked = !apiReachable || requiredMissing.length > 0;
+	const dockerLocked = docker !== null && docker.kind !== 'running';
+	const locked = !apiReachable || requiredMissing.length > 0 || dockerLocked;
 	const mainRef = useRef<HTMLElement>(null);
 
 	// Reset scroll on every view change so search results / list switches
@@ -109,6 +113,11 @@ function App() {
 				if (cancelled) return;
 				setHealth(h);
 				setApiReachable(true);
+				// API is up — we don't need to keep polling docker for state.
+				// HealthBanner relies on /health for db_down / missing-keys
+				// from here on; setting docker to a synthetic running state
+				// keeps the lockout derivation simple.
+				setDocker({ kind: 'running' });
 			} catch {
 				if (cancelled) return;
 				setApiReachable(false);
@@ -125,6 +134,32 @@ function App() {
 			window.removeEventListener('seg:config:changed', onConfigChanged);
 		};
 	}, []);
+
+	// Poll the bun side for Docker state on a faster cadence (3s) whenever
+	// the API isn't reachable. Stops as soon as the API responds — once
+	// the stack is up, /health is the source of truth and dockerStatus is
+	// expensive (each call shells out to `docker ps`). The startup
+	// auto-start fires from the bun side, so this poll is mostly a UX
+	// progress signal: spinner during `starting`, install/start prompts
+	// during the other states.
+	useEffect(() => {
+		if (apiReachable) return;
+		let cancelled = false;
+		const tick = async () => {
+			try {
+				const s = await rpc.request.dockerStatus({});
+				if (!cancelled) setDocker(s);
+			} catch {
+				/* RPC unavailable in browser stub; leave docker as-is */
+			}
+		};
+		void tick();
+		const t = setInterval(() => void tick(), 3_000);
+		return () => {
+			cancelled = true;
+			clearInterval(t);
+		};
+	}, [apiReachable]);
 
 	// While locked, force the user onto Settings (or let them stay on
 	// SetupGuide if that's where they navigated to). Detail / search /
@@ -294,6 +329,7 @@ function App() {
 			<ResizeEdges />
 			<TitleBar title={windowTitle} />
 			<HealthBanner
+				docker={docker}
 				onOpenSetupGuide={() => navigate({ kind: 'setup_guide' })}
 			/>
 			<div className="flex-1 flex min-h-0">
@@ -344,6 +380,7 @@ function App() {
 							refreshStats={refreshStats}
 							onDetailLoaded={setDetailGameName}
 							requiredMissing={requiredMissing}
+							docker={docker}
 							onOpenSettings={() => navigate({ kind: 'settings' })}
 						/>
 					</main>
@@ -581,6 +618,7 @@ function MainView({
 	refreshStats,
 	onDetailLoaded,
 	requiredMissing,
+	docker,
 	onOpenSettings,
 }: {
 	view: View;
@@ -594,6 +632,7 @@ function MainView({
 	refreshStats: () => void;
 	onDetailLoaded: (name: string | null) => void;
 	requiredMissing: string[];
+	docker: DockerStatus | null;
 	onOpenSettings: () => void;
 }) {
 	if (view.kind === 'home')
@@ -676,6 +715,7 @@ function MainView({
 				onStatsRefresh={refreshStats}
 				onSelect={onSelectGame}
 				requiredMissing={requiredMissing}
+				docker={docker}
 			/>
 		);
 	if (view.kind === 'setup_guide')
