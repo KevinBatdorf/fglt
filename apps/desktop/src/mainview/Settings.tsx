@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DockerStatus, UpdaterStatus } from '../shared/types';
 import { GameImage } from './GameImage';
+import { Select } from './Select';
 import {
 	type ActivityResponse,
 	api,
@@ -318,9 +319,13 @@ export function Settings({
 					</label>
 				</div>
 				<p className="text-xs text-zinc-500 mt-2">
-					Disabled by default. The ↻ icon still always appears for games
-					released in the last 14 days, since their data tends to change
-					frequently right after launch.
+					External data (description, reviews, scores, videos, HowLongToBeat
+					times) auto-refreshes on a background schedule — every 15 min for
+					Steam metadata, daily for OpenCritic / YouTube / SteamSpy. The ↻
+					icons here let you force a refresh on a specific game without
+					waiting. Hidden by default; the icon still always appears for
+					games released in the last 14 days since their data churns right
+					after launch.
 				</p>
 			</section>
 
@@ -451,14 +456,12 @@ bun run sync:gog                       # rematch and upsert ownership`}
 						))}
 					</div>
 					<div className="flex items-center gap-2">
-						<select
+						<Select
 							value=""
-							onChange={(e) => {
-								const v = e.target.value;
+							onChange={(v) => {
 								if (v && !hidden.includes(v)) saveHidden([...hidden, v].sort());
 							}}
 							disabled={hiddenSaving}
-							className="bg-zinc-950 border border-zinc-800 rounded h-9 px-2 text-sm text-zinc-200 disabled:opacity-50 focus:outline-none focus:border-zinc-600"
 						>
 							<option value="">Add a genre to hide…</option>
 							{allGenres
@@ -468,7 +471,7 @@ bun run sync:gog                       # rematch and upsert ownership`}
 										{g.name} ({g.games.toLocaleString()})
 									</option>
 								))}
-						</select>
+						</Select>
 						{hidden.length > 0 && (
 							<button
 								type="button"
