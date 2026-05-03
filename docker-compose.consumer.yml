@@ -142,3 +142,10 @@ services:
 
 volumes:
   fglt-pgdata:
+    # Pin the actual Docker volume name. Without this, compose prefixes
+    # the volume with the project name (= directory the compose was run
+    # from), so the bundled compose under apps/desktop/assets/ would
+    # create `assets_fglt-pgdata` instead of `fglt-pgdata`. Pinning the
+    # name keeps it consistent across the desktop app's bundled launch
+    # path AND any manual `docker compose` invocations from elsewhere.
+    name: fglt-pgdata

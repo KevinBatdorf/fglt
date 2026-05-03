@@ -709,7 +709,7 @@ function SystemStatusSection() {
 						disabled={busy}
 						className="text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
 					>
-						{busy ? 'Checking…' : 'Re-check'}
+						{busy ? 'Checking…' : 'Check now'}
 					</button>
 				</div>
 				<dl className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-xs space-y-1.5">

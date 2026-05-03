@@ -136,16 +136,53 @@ hand-curated chips and the UI hides the Refresh button entirely
 
 ## Containers (docker-compose)
 
-| service           | role                                              | cron default        |
-| ----------------- | ------------------------------------------------- | ------------------- |
-| `postgres`        | pgvector DB (port 5532 to avoid clashing w/ anna) | —                   |
-| `api`             | Hono server (port 3110)                           | —                   |
-| `syncer`          | refreshes owned-games list                        | `0 6 * * *` (06:00) |
-| `enricher`        | enriches + embeds new games                       | `*/15 * * * *`      |
-| `youtube-syncer`  | discovers YouTube videos per game (newest first)  | `30 6 * * *` (06:30)|
+We ship TWO compose files but you should normally only run ONE stack
+at a time on a given machine — both bind the same host ports (3110
+for the API, 5532 for Postgres) and the desktop app talks to whichever
+is up.
+
+- **`docker-compose.consumer.yml`** — what end users get. Shipped
+  inside the desktop binary, auto-started on first launch. Container
+  names `fglt-postgres`, `fglt-api`, etc. Volume `fglt-pgdata`. Builds
+  the API image from the bundled `assets/backend/` source — no
+  registry dependency.
+- **`docker-compose.yml`** — original dev compose. Container names
+  `steam-*`, volume `steam-pgdata`. Useful as a wipe-and-experiment
+  environment (different volume so it doesn't touch your real data).
+  Day-to-day dev no longer requires it.
+
+| service             | role                                              | cron default        |
+| ------------------- | ------------------------------------------------- | ------------------- |
+| `postgres`          | pgvector DB (port 5532)                           | —                   |
+| `api`               | Hono server (port 3110)                           | —                   |
+| `syncer`            | refreshes owned-games list                        | `0 6 * * *` (06:00) |
+| `enricher`          | enriches + embeds new games                       | `*/15 * * * *`      |
+| `steamspy-refresher`| re-pulls SteamSpy fields (ccu / tags / reviews)   | `0 5 * * *` (05:00) |
+| `youtube-syncer`    | discovers YouTube videos per game (newest first)  | `30 6 * * *` (06:30)|
 
 Non-Steam ownership syncs (Epic, GOG) run on the host via `bun run sync:<x>`
 — they need browser-flow auth that doesn't fit the cron model.
+
+### Recommended dev workflow (single-stack)
+
+Run the consumer stack 24/7 — that's your real data, your real cron
+jobs, AND what the released desktop binary talks to. No data ever lives
+in two places.
+
+- **Frontend changes:** `bun run desktop` (Electrobun dev mode + Vite
+  HMR). Talks to the consumer `fglt-api` on :3110. The dev channel
+  skips auto-starting consumer containers, so the stack you brought
+  up manually is what gets used.
+- **API/backend code changes:** stop the `fglt-api` container
+  (`docker compose -f docker-compose.consumer.yml stop api`), run
+  `bun run dev` instead — same port, same DB. When done, bring the
+  container back with `... up -d api`. (Or run `bun run dev` on a
+  different port and set `VITE_API_BASE` for the desktop.)
+- **Cron/script changes:** edit, then
+  `docker compose -f docker-compose.consumer.yml restart enricher`
+  (or the relevant service).
+- **Test the actual release binary:** just launch the built binary —
+  it talks to the same containers you've been using all along.
 
 ## Status Check
 
