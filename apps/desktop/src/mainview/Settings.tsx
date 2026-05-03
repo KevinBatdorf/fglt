@@ -921,7 +921,14 @@ function ConfigurationSection({
 	async function load(reveal = false) {
 		try {
 			const r = await api.config(reveal);
-			setLoaded((prev) => ({ ...(prev ?? {}), ...r.config }));
+			// REPLACE, don't merge. The API returns the full config snapshot
+			// (every CONFIG_KEY → either a value or undefined). Merging with
+			// the previous loaded state means deletes get silently kept —
+			// the bug was: user clears all AI fields → save POSTs deletes →
+			// server removes those rows → next /settings/config response
+			// omits them → merge keeps the OLD values from prev → UI thinks
+			// the config is still there and the AI mode toggle snaps back.
+			setLoaded(r.config);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 		}
