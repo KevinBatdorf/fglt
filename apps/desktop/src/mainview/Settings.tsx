@@ -1048,6 +1048,11 @@ function ConfigurationSection({
 						title="AI provider (optional)"
 						subtitle="Powers semantic search and vibe-chip generation. Without it, search falls back to keyword-only and vibe chips become a static list. Pick ONE of the two paths below — the local one (Ollama) is free and private."
 					>
+						<AIStatusLine
+							ollamaUrl={valueFor('OLLAMA_URL')}
+							aiBaseUrl={valueFor('AI_BASE_URL')}
+							aiApiKey={valueFor('AI_API_KEY')}
+						/>
 						<SubHeading
 							label="Option A · Local Ollama"
 							hint="Install Ollama on your machine, pull the models, point this URL at it. Nothing leaves your computer."
@@ -1184,6 +1189,66 @@ function FieldGroup({
 				{subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
 			</div>
 			<div className="space-y-2">{children}</div>
+		</div>
+	);
+}
+
+/**
+ * Live status pill for the AI section. Reads the current form values
+ * (NOT the saved DB state — so the user gets feedback as they type) and
+ * tells them exactly what's missing or what's effectively configured.
+ *
+ * Logic mirrors `resolve()` in src/lib/ai.ts: AI_BASE_URL wins over
+ * OLLAMA_URL when both are set; an API key is required for cloud
+ * providers but optional for Ollama (which ignores it).
+ */
+function AIStatusLine({
+	ollamaUrl,
+	aiBaseUrl,
+	aiApiKey,
+}: {
+	ollamaUrl: string;
+	aiBaseUrl: string;
+	aiApiKey: string;
+}) {
+	const hasOllama = ollamaUrl.trim().length > 0;
+	const hasCloud = aiBaseUrl.trim().length > 0;
+	const hasKey = aiApiKey.trim().length > 0;
+
+	let kind: 'ok' | 'warn' | 'missing' = 'missing';
+	let message = '';
+
+	if (!hasOllama && !hasCloud) {
+		kind = 'missing';
+		message =
+			'Not configured — fill in EITHER Option A (Ollama URL) OR Option B (API URL + key).';
+	} else if (hasCloud && hasOllama) {
+		kind = 'warn';
+		message = `Both options set — cloud (${aiBaseUrl.trim()}) will win and Ollama URL will be ignored. Clear one to disambiguate.`;
+	} else if (hasCloud && !hasKey) {
+		kind = 'warn';
+		message = `Cloud URL set (${aiBaseUrl.trim()}) but API key is missing — fill it in below or the API will reject calls.`;
+	} else if (hasCloud) {
+		kind = 'ok';
+		message = `Using cloud provider at ${aiBaseUrl.trim()}.`;
+	} else {
+		kind = 'ok';
+		message = `Using local Ollama at ${ollamaUrl.trim()}.`;
+	}
+
+	const style =
+		kind === 'ok'
+			? 'border-emerald-700 bg-emerald-950/40 text-emerald-200'
+			: kind === 'warn'
+				? 'border-amber-700 bg-amber-950/40 text-amber-100'
+				: 'border-red-700 bg-red-950/40 text-red-100';
+	const icon = kind === 'ok' ? '✓' : kind === 'warn' ? '!' : '✗';
+	return (
+		<div className={`rounded-md border px-3 py-1.5 text-xs ${style}`}>
+			<span className="font-mono mr-1.5" aria-hidden>
+				{icon}
+			</span>
+			{message}
 		</div>
 	);
 }
