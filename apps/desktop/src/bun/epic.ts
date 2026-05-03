@@ -19,13 +19,39 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 /** Public URL the user opens to get an Epic SSO auth code. */
 export const EPIC_AUTH_URL = 'https://legendary.gl/epiclogin';
 
 let legendaryBin: string | null = null;
+
+/**
+ * Candidate locations for legendary's tokens file. Used as the
+ * authoritative "is authed" signal because `legendary status` is slow
+ * (spawns a Python interpreter) and `legendary auth --delete` doesn't
+ * reliably clear state across all versions — when in doubt, the file's
+ * existence is what actually matters.
+ */
+function tokensFileCandidates(): string[] {
+	const home = homedir();
+	return [
+		// Linux + macOS XDG style.
+		join(home, '.config', 'legendary', 'user.json'),
+		// Windows.
+		join(home, 'AppData', 'Local', 'legendary', 'user.json'),
+		join(home, 'AppData', 'Roaming', 'legendary', 'user.json'),
+	];
+}
+
+function findTokensFile(): string | null {
+	for (const p of tokensFileCandidates()) {
+		if (existsSync(p)) return p;
+	}
+	return null;
+}
 
 /**
  * Find the legendary CLI on disk. Caches the result. Returns null if
@@ -104,18 +130,16 @@ export type EpicStatus =
 export function epicStatus(): EpicStatus {
 	const bin = resolveLegendaryBin();
 	if (!bin) return { kind: 'not_installed' };
-	// `legendary status --offline` is authoritative on auth state via
-	// its exit code: 0 = authed, non-zero = not. Don't try to parse
-	// stdout as the truth signal — older versions print things like
-	// "Account: <not signed in>" on stderr which a regex would happily
-	// pick up as the account name (yielding amazing UI like "Connected
-	// as <not").
+	// File presence is the authoritative auth signal. Cheap (no process
+	// spawn), reliable across legendary versions, and flips immediately
+	// when we delete the file in epicLogout — vs. `legendary status`
+	// which has been observed to lag / cache / report inconsistently.
+	if (!findTokensFile()) return { kind: 'not_authed' };
+	// We're authed. Best-effort account name extraction from
+	// `legendary status --offline`. If parsing fails, return authed
+	// without a label rather than corrupting the UI with "<not".
 	const r = run(['status', '--offline'], 10_000);
-	if (!r.ok) return { kind: 'not_authed' };
-	const text = r.stdout + r.stderr;
-	// Format varies by version: "Epic account: SomeUser <hex>", or
-	// "Account: SomeUser". Capture only printable, non-`<` content so
-	// any "<not signed in>"-style fallback gets filtered out.
+	const text = `${r.stdout}\n${r.stderr}`;
 	const m = text.match(/account:\s+([^\s<]+)/i);
 	const account =
 		m?.[1] && !m[1].startsWith('<') && m[1].length > 0 ? m[1] : undefined;
@@ -186,26 +210,24 @@ export function epicLibrary(): {
 }
 
 /**
- * `legendary auth --delete` — wipes local Epic tokens. Idempotent:
- * `legendary auth --delete` exits non-zero with "Not logged in" when
- * already disconnected, which we treat as success since the
- * end-state matches what the caller wanted.
+ * Wipe local Epic tokens. We delete the user.json file directly rather
+ * than relying on `legendary auth --delete` — that command silently
+ * does nothing in some legendary versions (e.g. older builds where the
+ * flag was unrecognised, or builds that prompt for confirmation we
+ * can't satisfy non-interactively). Removing the file is what `--delete`
+ * does internally anyway, so this is just cutting out the unreliable
+ * middleman. Idempotent: returns ok even if no tokens existed.
  */
 export function epicLogout(): { ok: boolean; error?: string } {
-	const bin = resolveLegendaryBin();
-	if (!bin) return { ok: true }; // not installed = no tokens to clear, success
-	const r = run(['auth', '--delete'], 10_000);
-	if (r.ok) return { ok: true };
-	const combined = `${r.stderr}\n${r.stdout}`.toLowerCase();
-	if (
-		combined.includes('not logged in') ||
-		combined.includes('not signed in') ||
-		combined.includes('no session')
-	) {
+	const path = findTokensFile();
+	if (!path) return { ok: true };
+	try {
+		unlinkSync(path);
 		return { ok: true };
+	} catch (e) {
+		return {
+			ok: false,
+			error: e instanceof Error ? e.message : String(e),
+		};
 	}
-	return {
-		ok: false,
-		error: (r.stderr || r.stdout || 'logout failed').trim(),
-	};
 }
