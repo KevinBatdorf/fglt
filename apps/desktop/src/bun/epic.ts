@@ -100,7 +100,13 @@ function resolveLegendaryBin(): string | null {
 function run(
 	args: string[],
 	timeoutMs = 60_000,
-): { ok: boolean; stdout: string; stderr: string; status: number | null } {
+): {
+	ok: boolean;
+	stdout: string;
+	stderr: string;
+	status: number | null;
+	spawnError?: string;
+} {
 	const bin = resolveLegendaryBin();
 	if (!bin) {
 		return { ok: false, stdout: '', stderr: 'legendary not found', status: null };
@@ -115,6 +121,10 @@ function run(
 		stdout: proc.stdout ?? '',
 		stderr: proc.stderr ?? '',
 		status: proc.status,
+		// proc.error is set when spawn itself failed (ENOENT, EACCES,
+		// timeout). Surface it so callers can show *something* when
+		// stderr is also empty.
+		spawnError: proc.error ? `${proc.error.name}: ${proc.error.message}` : undefined,
 	};
 }
 
@@ -164,27 +174,42 @@ export function epicAuthExchange(code: string): {
 } {
 	const trimmed = code.trim();
 	if (!trimmed) return { ok: false, error: 'auth code is empty' };
-	// Generous timeout — legendary spawns Python which can take a few
-	// seconds on Windows the first time, then the actual Epic API call
-	// can be slow.
-	const r = run(['auth', '--code', trimmed], 60_000);
+	const bin = resolveLegendaryBin();
+	if (!bin) {
+		return {
+			ok: false,
+			error:
+				'legendary CLI not found on PATH or in any common pip --user install location. Try `pip install --user legendary-gl` and restart this app.',
+		};
+	}
+	// `--disable-webview` forces non-interactive mode. Some legendary
+	// versions try to launch an embedded Qt webview by default even
+	// when --code is supplied; that fails silently in a spawnSync
+	// context (no DISPLAY / no GUI parent), giving the user "auth
+	// failed" with no useful detail.
+	const r = run(['auth', '--disable-webview', '--code', trimmed], 60_000);
 	if (r.ok) return { ok: true };
 	// Surface as much diagnostic info as we have. Most legendary errors
-	// land in stderr ("Failed to login: <reason>"); some go to stdout.
+	// land in stderr ("Failed to login: <reason>"); some go to stdout;
+	// spawn-level errors (ENOENT, timeout) live on proc.error.
 	const detail = (r.stderr || r.stdout || '').trim();
 	if (detail) {
-		// Trim long Python tracebacks to just the last line — usually
-		// the actionable bit.
 		const lines = detail.split(/\r?\n/).filter((l) => l.trim().length > 0);
 		const tail = lines[lines.length - 1] ?? detail;
 		return {
 			ok: false,
-			error: `${tail} (exit ${r.status ?? 'null'}). Codes expire fast — click "Open Epic sign-in" again to get a fresh one.`,
+			error: `${tail} [exit ${r.status ?? 'null'}, bin: ${bin}]. Codes expire fast — click "Open Epic sign-in" again for a fresh one.`,
+		};
+	}
+	if (r.spawnError) {
+		return {
+			ok: false,
+			error: `Couldn't run legendary at ${bin}: ${r.spawnError}`,
 		};
 	}
 	return {
 		ok: false,
-		error: `legendary exited ${r.status ?? 'null'} with no output. Check that legendary works on the command line, then try again.`,
+		error: `legendary at ${bin} exited ${r.status ?? 'null'} silently. Try running 'legendary auth --code <CODE>' in a terminal — the error there will be the same one we're missing here.`,
 	};
 }
 
