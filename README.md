@@ -5,7 +5,7 @@ your Steam, Epic, and GOG libraries. Search by what a game *feels* like
 ("cozy puzzle", "3am dread"), get weekend-length picks, hidden gems,
 "more like this" suggestions — all from your own backlog.
 
-![Find a Game Like That — desktop app screenshot](apps/desktop/assets/screenshot.png)
+![Find a Game Like That — desktop app screenshot](./screenshot.png)
 
 ## Install
 
