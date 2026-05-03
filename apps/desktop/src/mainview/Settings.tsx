@@ -1046,26 +1046,40 @@ function ConfigurationSection({
 
 					<FieldGroup
 						title="AI provider (optional)"
-						subtitle="Any OpenAI-compatible endpoint. Leave blank for the default Ollama at host.docker.internal:11434. Without an AI provider, hybrid search and vibe-chips fall back to keyword-only / static."
+						subtitle="Powers semantic search and vibe-chip generation. Without it, search falls back to keyword-only and vibe chips become a static list. Pick ONE of the two paths below — the local one (Ollama) is free and private."
 					>
+						<SubHeading
+							label="Option A · Local Ollama"
+							hint="Install Ollama on your machine, pull the models, point this URL at it. Nothing leaves your computer."
+						/>
+						<ConfigField
+							{...fieldProps}
+							keyName="OLLAMA_URL"
+							label="Ollama URL"
+							placeholder="http://host.docker.internal:11434"
+							helpUrl="https://ollama.com/download"
+							helpUrlLabel="Get Ollama"
+						/>
+						<SubHeading
+							label="Option B · Cloud provider"
+							hint="OpenAI, Groq, Together, or anything else with an OpenAI-compatible API. Fill in BOTH fields. Leave blank if you're using Ollama."
+						/>
 						<ConfigField
 							{...fieldProps}
 							keyName="AI_BASE_URL"
-							label="AI base URL"
+							label="API base URL"
 							placeholder="https://api.openai.com/v1"
 						/>
 						<ConfigField
 							{...fieldProps}
 							keyName="AI_API_KEY"
-							label="AI API key"
+							label="API key"
 							sensitive
 							placeholder="sk-…"
 						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="AI_PROVIDER_NAME"
-							label="AI provider name"
-							placeholder="openai (only used for display)"
+						<SubHeading
+							label="Models"
+							hint="Defaults work for most setups. Override only if you've pulled different models on your Ollama, or want to use a specific cloud model."
 						/>
 						<ConfigField
 							{...fieldProps}
@@ -1078,12 +1092,6 @@ function ConfigurationSection({
 							keyName="AI_EMBED_MODEL"
 							label="Embed model"
 							placeholder="nomic-embed-text"
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="OLLAMA_URL"
-							label="Ollama URL"
-							placeholder="http://host.docker.internal:11434"
 						/>
 					</FieldGroup>
 
@@ -1176,6 +1184,22 @@ function FieldGroup({
 				{subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
 			</div>
 			<div className="space-y-2">{children}</div>
+		</div>
+	);
+}
+
+/**
+ * In-group divider for FieldGroups that need to break a long list of
+ * fields into "do this OR that" sub-sections (currently just AI
+ * provider — Ollama path vs. cloud path).
+ */
+function SubHeading({ label, hint }: { label: string; hint?: string }) {
+	return (
+		<div className="pt-2 border-t border-zinc-800/60">
+			<div className="text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
+				{label}
+			</div>
+			{hint && <p className="text-[11px] text-zinc-500 mt-0.5">{hint}</p>}
 		</div>
 	);
 }
