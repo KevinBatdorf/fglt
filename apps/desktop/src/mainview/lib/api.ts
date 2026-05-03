@@ -301,6 +301,7 @@ export interface HealthStatus {
 	steam_id: 'present' | 'missing';
 	youtube_key: 'present' | 'missing';
 	opencritic_key: 'present' | 'missing';
+	gog: 'connected' | 'disconnected';
 	total_games: number;
 	last_sync: string | null;
 	/**

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { raw } from './db';
 import { getConfig } from './lib/config';
+import { loadTokens as loadGogTokens } from './lib/gog';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
 import { activityRoutes } from './routes/activity';
@@ -109,6 +110,10 @@ app.get('/health', async (c) => {
 		// matching panel/badge stays empty; the library still works.
 		youtube_key: cfg.YOUTUBE_API_KEY ? 'present' : 'missing',
 		opencritic_key: cfg.OPENCRITIC_API_KEY ? 'present' : 'missing',
+		// GOG ownership — checks whether the OAuth tokens file exists.
+		// Epic has no equivalent server-side state (it's a manual CLI
+		// flow), so it's not surfaced here.
+		gog: (await loadGogTokens().catch(() => null)) ? 'connected' : 'disconnected',
 		total_games: totalGames,
 		last_sync: lastSync,
 		required_missing: required,

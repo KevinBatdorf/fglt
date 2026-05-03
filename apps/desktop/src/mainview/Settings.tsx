@@ -138,7 +138,15 @@ export function Settings({
 
 			<BackendSection docker={docker} />
 
-			<ConfigurationSection requiredMissing={requiredMissing} />
+			<ConfigurationSection
+				requiredMissing={requiredMissing}
+				extraLibrarySources={
+					<>
+						<GogConnect onSyncComplete={onStatsRefresh} />
+						<EpicConnect />
+					</>
+				}
+			/>
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
@@ -355,14 +363,6 @@ export function Settings({
 				<p className="text-xs text-zinc-500 mt-2">
 					Applies to the "Recently added" sidebar entry. Default 2 months.
 				</p>
-			</section>
-
-			<section>
-				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
-					Other libraries
-				</h2>
-				<GogConnect onSyncComplete={onStatsRefresh} />
-				<EpicConnect />
 			</section>
 
 			<section>
@@ -641,61 +641,97 @@ function SystemStatusSection() {
 		void recheck();
 	}, []);
 
-	const rows: { label: string; value: string; ok: boolean }[] = !reachable
-		? [{ label: 'API', value: 'Unreachable', ok: false }]
+	type Row = { label: string; value: string; ok: boolean };
+	type Group = { label: string; rows: Row[] };
+
+	const groups: Group[] = !reachable
+		? [
+				{
+					label: 'Core',
+					rows: [{ label: 'API', value: 'Unreachable', ok: false }],
+				},
+			]
 		: !health
 			? []
 			: [
 					{
-						label: 'API',
-						value: 'Reachable',
-						ok: true,
+						label: 'Core',
+						rows: [
+							{ label: 'API', value: 'Reachable', ok: true },
+							{
+								label: 'Database',
+								value: health.db === 'ok' ? 'Connected' : 'Down',
+								ok: health.db === 'ok',
+							},
+							{
+								label: 'Games in library',
+								value: health.total_games.toLocaleString(),
+								ok: health.total_games > 0,
+							},
+							{
+								label: 'Last sync',
+								value: health.last_sync
+									? new Date(health.last_sync).toLocaleString()
+									: 'Never',
+								ok: !!health.last_sync,
+							},
+						],
 					},
 					{
-						label: 'Database',
-						value: health.db === 'ok' ? 'Connected' : 'Down',
-						ok: health.db === 'ok',
+						label: 'Library sources',
+						rows: [
+							{
+								label: 'Steam API key',
+								value: health.steam_key === 'present' ? 'Set' : 'Missing',
+								ok: health.steam_key === 'present',
+							},
+							{
+								label: 'Steam ID',
+								value: health.steam_id === 'present' ? 'Set' : 'Missing',
+								ok: health.steam_id === 'present',
+							},
+							{
+								label: 'GOG',
+								value:
+									health.gog === 'connected'
+										? 'Connected'
+										: 'Not connected (optional)',
+								ok: health.gog === 'connected',
+							},
+							{
+								label: 'Epic',
+								value: 'Manual setup (optional)',
+								// Always amber — there's no auth-state to detect for Epic.
+								// "Manual setup" tells the user what's up without a red flag.
+								ok: false,
+							},
+						],
 					},
 					{
-						label: 'AI provider',
-						value: health.ai === 'ok' ? 'Configured' : 'Disabled',
-						ok: health.ai === 'ok',
-					},
-					{
-						label: 'Steam API key',
-						value: health.steam_key === 'present' ? 'Set' : 'Missing',
-						ok: health.steam_key === 'present',
-					},
-					{
-						label: 'Steam ID',
-						value: health.steam_id === 'present' ? 'Set' : 'Missing',
-						ok: health.steam_id === 'present',
-					},
-					{
-						label: 'YouTube API key',
-						value:
-							health.youtube_key === 'present' ? 'Set' : 'Not set (optional)',
-						// Optional integrations show amber when missing, not red —
-						// the library is fully functional without them.
-						ok: health.youtube_key === 'present',
-					},
-					{
-						label: 'OpenCritic key',
-						value:
-							health.opencritic_key === 'present' ? 'Set' : 'Not set (optional)',
-						ok: health.opencritic_key === 'present',
-					},
-					{
-						label: 'Games in library',
-						value: health.total_games.toLocaleString(),
-						ok: health.total_games > 0,
-					},
-					{
-						label: 'Last sync',
-						value: health.last_sync
-							? new Date(health.last_sync).toLocaleString()
-							: 'Never',
-						ok: !!health.last_sync,
+						label: 'AI + enrichment',
+						rows: [
+							{
+								label: 'AI provider',
+								value: health.ai === 'ok' ? 'Configured' : 'Disabled',
+								ok: health.ai === 'ok',
+							},
+							{
+								label: 'YouTube API key',
+								value:
+									health.youtube_key === 'present'
+										? 'Set'
+										: 'Not set (optional)',
+								ok: health.youtube_key === 'present',
+							},
+							{
+								label: 'OpenCritic key',
+								value:
+									health.opencritic_key === 'present'
+										? 'Set'
+										: 'Not set (optional)',
+								ok: health.opencritic_key === 'present',
+							},
+						],
 					},
 				];
 
@@ -715,19 +751,33 @@ function SystemStatusSection() {
 						{busy ? 'Checking…' : 'Check now'}
 					</button>
 				</div>
-				<dl className="bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-xs space-y-1.5">
-					{rows.map((r) => (
-						<div key={r.label} className="grid grid-cols-[140px_1fr] gap-2">
-							<dt className="text-zinc-500">{r.label}</dt>
-							<dd className={r.ok ? 'text-emerald-300' : 'text-amber-300'}>
-								<span aria-hidden className="mr-1.5">
-									{r.ok ? '✓' : '✗'}
-								</span>
-								{r.value}
-							</dd>
+				<div className="bg-zinc-900 border border-zinc-800 rounded-md divide-y divide-zinc-800">
+					{groups.map((g) => (
+						<div key={g.label} className="py-2 px-3">
+							<div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1.5">
+								{g.label}
+							</div>
+							<dl className="text-xs space-y-1.5">
+								{g.rows.map((r) => (
+									<div
+										key={r.label}
+										className="grid grid-cols-[140px_1fr] gap-2"
+									>
+										<dt className="text-zinc-500">{r.label}</dt>
+										<dd
+											className={r.ok ? 'text-emerald-300' : 'text-amber-300'}
+										>
+											<span aria-hidden className="mr-1.5">
+												{r.ok ? '✓' : '✗'}
+											</span>
+											{r.value}
+										</dd>
+									</div>
+								))}
+							</dl>
 						</div>
 					))}
-				</dl>
+				</div>
 			</div>
 			<UpdatesSubsection />
 		</section>
@@ -860,7 +910,7 @@ function GogConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 	}
 
 	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3 mb-3">
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
 			<div className="flex items-baseline justify-between gap-3 flex-wrap">
 				<div>
 					<div className="text-sm font-medium">GOG</div>
@@ -1151,8 +1201,17 @@ function labelForDocker(kind: string): string {
  */
 function ConfigurationSection({
 	requiredMissing,
+	extraLibrarySources,
 }: {
 	requiredMissing: string[];
+	/**
+	 * Slot rendered inside the "Library sources" block, right after the
+	 * Steam-keys card. Used by the parent to drop in the GogConnect /
+	 * EpicConnect components — they have their own internal save flows
+	 * (OAuth, CLI handoff) so they're not part of the form-state diff
+	 * the bottom Save button drives.
+	 */
+	extraLibrarySources?: React.ReactNode;
 }) {
 	// Loaded snapshot — what the server most recently returned. Sensitive
 	// values arrive masked unless the user clicked Reveal on that field.
@@ -1299,9 +1358,13 @@ function ConfigurationSection({
 						. The rest of the app stays locked until both are filled in.
 					</div>
 				)}
+				{/* Library sources — Steam keys + GOG OAuth + Epic */}
+				<div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mt-3 mb-2">
+					Library sources
+				</div>
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
 					<FieldGroup
-						title="Required"
+						title="Steam"
 						subtitle="Library sync needs both. Click the link next to each field to get yours."
 					>
 						<ConfigField
@@ -1322,7 +1385,16 @@ function ConfigurationSection({
 							helpUrlLabel="Find yours"
 						/>
 					</FieldGroup>
+				</div>
+				{extraLibrarySources && (
+					<div className="mt-3 space-y-3">{extraLibrarySources}</div>
+				)}
 
+				{/* AI + enrichment — optional, separate visual block */}
+				<div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mt-6 mb-2">
+					AI + enrichment
+				</div>
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
 					<AIProviderSection
 						{...fieldProps}
 						loadedSnapshot={loaded ?? {}}
