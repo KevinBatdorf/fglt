@@ -104,20 +104,22 @@ export type EpicStatus =
 export function epicStatus(): EpicStatus {
 	const bin = resolveLegendaryBin();
 	if (!bin) return { kind: 'not_installed' };
-	// `legendary status --offline` returns auth state without hitting Epic.
+	// `legendary status --offline` is authoritative on auth state via
+	// its exit code: 0 = authed, non-zero = not. Don't try to parse
+	// stdout as the truth signal — older versions print things like
+	// "Account: <not signed in>" on stderr which a regex would happily
+	// pick up as the account name (yielding amazing UI like "Connected
+	// as <not").
 	const r = run(['status', '--offline'], 10_000);
-	if (!r.ok) {
-		// status fails when not authed (exits non-zero with "Not logged in").
-		const combined = `${r.stderr}\n${r.stdout}`.toLowerCase();
-		if (combined.includes('not logged in') || combined.includes('not signed in')) {
-			return { kind: 'not_authed' };
-		}
-		// Some versions print the account block to stderr even on success.
-		// Fall through and try to parse anyway.
-	}
+	if (!r.ok) return { kind: 'not_authed' };
 	const text = r.stdout + r.stderr;
-	const m = text.match(/account:\s*(\S+)/i);
-	return { kind: 'authed', account: m?.[1] };
+	// Format varies by version: "Epic account: SomeUser <hex>", or
+	// "Account: SomeUser". Capture only printable, non-`<` content so
+	// any "<not signed in>"-style fallback gets filtered out.
+	const m = text.match(/account:\s+([^\s<]+)/i);
+	const account =
+		m?.[1] && !m[1].startsWith('<') && m[1].length > 0 ? m[1] : undefined;
+	return { kind: 'authed', account };
 }
 
 /**
