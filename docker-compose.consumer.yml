@@ -53,6 +53,11 @@ services:
     build: ./backend
     image: fglt-app:local
     container_name: fglt-api
+    volumes:
+      # GOG tokens (data/gog-tokens.json) need a real persistent home
+      # so they survive container rebuilds. Named volume = no host-path
+      # surprises across OSes.
+      - fglt-data:/app/data
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
       PORT: '3110'
@@ -149,3 +154,8 @@ volumes:
     # name keeps it consistent across the desktop app's bundled launch
     # path AND any manual `docker compose` invocations from elsewhere.
     name: fglt-pgdata
+  fglt-data:
+    # Persistent /app/data — currently holds GOG OAuth tokens, possibly
+    # other small state files in future. Pinned name for the same
+    # reason as above.
+    name: fglt-data

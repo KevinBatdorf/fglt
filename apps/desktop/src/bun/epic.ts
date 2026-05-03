@@ -183,14 +183,27 @@ export function epicLibrary(): {
 	}
 }
 
-/** `legendary auth --delete` — wipes local Epic tokens. */
+/**
+ * `legendary auth --delete` — wipes local Epic tokens. Idempotent:
+ * `legendary auth --delete` exits non-zero with "Not logged in" when
+ * already disconnected, which we treat as success since the
+ * end-state matches what the caller wanted.
+ */
 export function epicLogout(): { ok: boolean; error?: string } {
+	const bin = resolveLegendaryBin();
+	if (!bin) return { ok: true }; // not installed = no tokens to clear, success
 	const r = run(['auth', '--delete'], 10_000);
-	if (!r.ok) {
-		return {
-			ok: false,
-			error: (r.stderr || r.stdout || 'logout failed').trim(),
-		};
+	if (r.ok) return { ok: true };
+	const combined = `${r.stderr}\n${r.stdout}`.toLowerCase();
+	if (
+		combined.includes('not logged in') ||
+		combined.includes('not signed in') ||
+		combined.includes('no session')
+	) {
+		return { ok: true };
 	}
-	return { ok: true };
+	return {
+		ok: false,
+		error: (r.stderr || r.stdout || 'logout failed').trim(),
+	};
 }
