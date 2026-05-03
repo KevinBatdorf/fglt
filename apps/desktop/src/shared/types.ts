@@ -32,6 +32,20 @@ export interface RefreshResult {
 }
 
 /**
+ * Epic Games CLI integration state. The desktop's bun side shells out
+ * to the host's `legendary-gl` (Python tool the user installed) — Epic
+ * has no public library API.
+ *
+ *   not_installed — `legendary` not on PATH or known install paths
+ *   not_authed    — installed but no Epic SSO tokens stored
+ *   authed        — tokens present; account name when available
+ */
+export type EpicStatus =
+	| { kind: 'not_installed' }
+	| { kind: 'not_authed' }
+	| { kind: 'authed'; account?: string };
+
+/**
  * Snapshot of the bundled Docker stack from the desktop's perspective.
  * The desktop app shells out to `docker` on the user's behalf so they
  * never need a terminal — this union is what those helpers return.
@@ -143,6 +157,30 @@ export type FgltRPC = {
 			 * build locally now — no registry).
 			 */
 			dockerRebuild: {
+				params: Record<string, never>;
+				response: { ok: boolean; error?: string };
+			};
+			// Epic Games via legendary CLI.
+			epicStatus: {
+				params: Record<string, never>;
+				response: EpicStatus;
+			};
+			epicAuthExchange: {
+				params: { code: string };
+				response: { ok: boolean; error?: string };
+			};
+			epicSync: {
+				params: Record<string, never>;
+				response: {
+					ok: boolean;
+					error?: string;
+					total?: number;
+					matched?: number;
+					already_matched?: number;
+					unmatched?: number;
+				};
+			};
+			epicLogout: {
 				params: Record<string, never>;
 				response: { ok: boolean; error?: string };
 			};

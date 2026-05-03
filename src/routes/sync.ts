@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
+import { type EpicGameInput, importEpicLibrary } from '../lib/epic-import';
 import {
 	clearTokens as clearGogTokens,
 	exchangeCodeForTokens as exchangeGogCode,
@@ -91,6 +92,38 @@ export function syncRoutes(raw: postgres.Sql) {
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'unknown';
 			return c.json({ error: 'disconnect failed', detail: msg }, 500);
+		}
+	});
+
+	// ----- Epic --------------------------------------------------------
+	//
+	// Auth + library fetch happen on the desktop's host side (the bun
+	// process shells to legendary-gl, which the user installed locally).
+	// The API just receives the parsed library JSON and runs the same
+	// matching pipeline GOG uses.
+
+	/**
+	 * Body: { games: EpicGameInput[] } — the list legendary returned.
+	 * We dedupe via the existing platform_ownership unique key so re-runs
+	 * are cheap.
+	 */
+	app.post('/sync/epic/import', async (c) => {
+		const body = (await c.req.json().catch(() => ({}))) as {
+			games?: unknown;
+		};
+		if (!Array.isArray(body.games)) {
+			return c.json({ error: 'games array is required' }, 400);
+		}
+		try {
+			const result = await importEpicLibrary(
+				raw,
+				body.games as EpicGameInput[],
+				() => {},
+			);
+			return c.json({ ok: true, ...result });
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'unknown';
+			return c.json({ error: 'epic import failed', detail: msg }, 502);
 		}
 	});
 

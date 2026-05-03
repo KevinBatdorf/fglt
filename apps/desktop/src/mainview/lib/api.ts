@@ -304,6 +304,8 @@ export interface HealthStatus {
 	gog: 'connected' | 'disconnected';
 	total_games: number;
 	last_sync: string | null;
+	/** ISO timestamp of the next scheduled Steam sync (computed from SYNC_CRON). */
+	next_sync: string | null;
 	/**
 	 * Keys that are REQUIRED for the app to do anything useful but aren't
 	 * set yet. Empty array = good to go. Currently always a subset of

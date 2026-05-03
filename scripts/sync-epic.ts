@@ -1,30 +1,24 @@
 /**
- * Sync owned Epic Games Store titles into the library.
+ * CLI sync of the owned Epic Games Store library. Thin wrapper around
+ * `src/lib/epic-import.ts` so the API endpoint can use the same matcher.
  *
- * Requires: legendary CLI (https://github.com/derrod/legendary) authed locally.
+ * Requires legendary-gl installed + authed locally:
  *   pip install --user legendary-gl
- *   legendary auth                # browser flow
+ *   legendary auth        # browser flow
  *   bun run sync:epic
  *
- * Resolves each Epic title to a Steam appid via storesearch. Confident matches
- * land in `platform_ownership`; misses go to `unmatched_ownership` for review.
+ * The desktop app does this same thing without you needing to touch a
+ * terminal — Settings → Library sources → Epic Games. This script
+ * remains for headless dev / one-off sync from the project repo.
  */
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { raw } from '../src/db';
-import { matchSteamAppid } from '../src/lib/match-steam-appid';
-import { sleep } from '../src/lib/sleep';
+import { type EpicGameInput, importEpicLibrary } from '../src/lib/epic-import';
 
-const STORESEARCH_DELAY_MS = 600;
-
-interface EpicGame {
-	app_name: string;
-	app_title: string;
-	metadata: {
-		title: string;
-		developer?: string;
-		creationDate?: string;
+interface EpicGameRaw extends EpicGameInput {
+	metadata?: EpicGameInput['metadata'] & {
 		categories?: Array<{ path: string }>;
 	};
 }
@@ -50,7 +44,7 @@ function resolveLegendaryBin(): string {
 	);
 }
 
-function fetchEpicLibrary(): EpicGame[] {
+function fetchEpicLibrary(): EpicGameRaw[] {
 	const bin = resolveLegendaryBin();
 	const result: SpawnSyncReturns<Buffer> = spawnSync(bin, ['list', '--json'], {
 		maxBuffer: 64 * 1024 * 1024,
@@ -60,98 +54,20 @@ function fetchEpicLibrary(): EpicGame[] {
 			`legendary list failed (${result.status}): ${result.stderr.toString()}`,
 		);
 	}
-	const all = JSON.parse(result.stdout.toString()) as EpicGame[];
+	const all = JSON.parse(result.stdout.toString()) as EpicGameRaw[];
 	return all.filter((g) =>
-		g.metadata.categories?.some((c) => c.path === 'games'),
+		g.metadata?.categories?.some((c) => c.path === 'games'),
 	);
 }
 
-/**
- * Ensure a row exists in `games` so platform_ownership FK is satisfied.
- * Leaves enriched_at NULL — the enricher cron will fill metadata on its
- * next tick, same path as freshly-purchased Steam titles.
- */
-async function ensureGameStub(appid: number, name: string): Promise<void> {
-	await raw`
-		INSERT INTO games (appid, name)
-		VALUES (${appid}, ${name})
-		ON CONFLICT (appid) DO NOTHING
-	`;
-}
+console.log(`[sync-epic] starting at ${new Date().toISOString()}`);
 
-async function main() {
-	console.log(`[sync-epic] starting at ${new Date().toISOString()}`);
+try {
 	const library = fetchEpicLibrary();
-	console.log(`[sync-epic] ${library.length} Epic titles`);
-
-	let matched = 0;
-	let alreadyMatched = 0;
-	let unmatched = 0;
-
-	for (const game of library) {
-		const title = game.metadata.title;
-		const externalId = game.app_name;
-		const developer = game.metadata.developer ?? null;
-		const acquired = game.metadata.creationDate
-			? new Date(game.metadata.creationDate).toISOString()
-			: null;
-
-		const existing = await raw`
-			SELECT appid FROM platform_ownership
-			WHERE platform = 'epic' AND external_id = ${externalId}
-			LIMIT 1
-		`;
-		if (existing.length > 0) {
-			alreadyMatched++;
-			continue;
-		}
-
-		const result = await matchSteamAppid(title);
-		await sleep(STORESEARCH_DELAY_MS);
-
-		if (result.appid !== null) {
-			const matchedName = result.candidates[0]?.name ?? title;
-			await ensureGameStub(result.appid, matchedName);
-			await raw`
-				INSERT INTO platform_ownership
-					(appid, platform, external_id, title_at_source, acquired_at)
-				VALUES
-					(${result.appid}, 'epic', ${externalId}, ${title}, ${acquired})
-				ON CONFLICT (appid, platform) DO UPDATE SET
-					external_id = EXCLUDED.external_id,
-					title_at_source = EXCLUDED.title_at_source,
-					updated_at = now()
-			`;
-			matched++;
-			console.log(
-				`[sync-epic] ${title} -> ${result.appid} (${result.confidence.toFixed(2)})`,
-			);
-		} else {
-			await raw`
-				INSERT INTO unmatched_ownership
-					(platform, external_id, title_at_source, developer)
-				VALUES
-					('epic', ${externalId}, ${title}, ${developer})
-				ON CONFLICT (platform, external_id) DO UPDATE SET
-					title_at_source = EXCLUDED.title_at_source,
-					developer = EXCLUDED.developer,
-					last_seen = now()
-			`;
-			unmatched++;
-			console.log(
-				`[sync-epic] ${title} -> NO MATCH (best: ${result.candidates[0]?.name ?? 'none'} @ ${result.confidence.toFixed(2)})`,
-			);
-		}
-	}
-
-	console.log(
-		`[sync-epic] done — matched=${matched} skipped=${alreadyMatched} unmatched=${unmatched}`,
-	);
+	await importEpicLibrary(raw, library, console.log);
 	await raw.end();
-}
-
-main().catch(async (e) => {
+} catch (e) {
 	console.error('[sync-epic] fatal:', e);
 	await raw.end().catch(() => {});
 	process.exit(1);
-});
+}

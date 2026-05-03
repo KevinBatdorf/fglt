@@ -116,9 +116,47 @@ app.get('/health', async (c) => {
 		gog: (await loadGogTokens().catch(() => null)) ? 'connected' : 'disconnected',
 		total_games: totalGames,
 		last_sync: lastSync,
+		// Next scheduled Steam sync — based on the SYNC_CRON env (default
+		// `0 6 * * *`, daily at 06:00 UTC). Computed here so the UI can
+		// say "Last sync … · Next sync in 8h" without parsing crons
+		// client-side.
+		next_sync: nextSyncIso(process.env.SYNC_CRON ?? '0 6 * * *'),
 		required_missing: required,
 	});
 });
+
+/**
+ * Compute the next fire time for a 5-field cron expression. Supports
+ * the subset we actually use in the consumer compose: `m h * * *`
+ * (specific minute + hour, daily). Other expressions degrade to
+ * "tomorrow at the same wall-clock time as the cron's hour" — close
+ * enough for the UI's "Next sync …" hint.
+ */
+function nextSyncIso(cron: string): string | null {
+	try {
+		const parts = cron.trim().split(/\s+/);
+		if (parts.length < 2) return null;
+		const minute = Number.parseInt(parts[0], 10);
+		const hour = Number.parseInt(parts[1], 10);
+		if (!Number.isFinite(minute) || !Number.isFinite(hour)) return null;
+		const now = new Date();
+		const next = new Date(
+			Date.UTC(
+				now.getUTCFullYear(),
+				now.getUTCMonth(),
+				now.getUTCDate(),
+				hour,
+				minute,
+				0,
+				0,
+			),
+		);
+		if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+		return next.toISOString();
+	} catch {
+		return null;
+	}
+}
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 

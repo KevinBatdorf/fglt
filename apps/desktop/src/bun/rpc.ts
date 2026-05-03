@@ -16,6 +16,7 @@ import {
 } from 'electrobun/bun';
 import type {
 	DockerStatus,
+	EpicStatus,
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
@@ -28,6 +29,12 @@ import {
 	startBackend,
 	stopBackend,
 } from './docker';
+import {
+	epicAuthExchange,
+	epicLibrary,
+	epicLogout,
+	epicStatus as readEpicStatus,
+} from './epic';
 import { epicLaunchUri, getEpicInstalled } from './launchers/epic';
 import { getGogInstalled, gogLaunchUri } from './launchers/gog';
 import {
@@ -299,6 +306,44 @@ export function defineFgltRpc() {
 				// registry pulls. The webview still calls this to get the
 				// "Update backend" button's behaviour.
 				dockerRebuild: () => rebuildBackend(),
+
+				// ----- Epic Games (legendary CLI on the host) -----------
+				// Auth + library fetch shell out to legendary; library
+				// matching POSTs to the API for storesearch + DB upsert.
+				epicStatus: (): EpicStatus => readEpicStatus(),
+				epicAuthExchange: ({ code }) => epicAuthExchange(code),
+				epicLogout: () => epicLogout(),
+				epicSync: async () => {
+					const lib = epicLibrary();
+					if (!lib.ok || !lib.items) {
+						return { ok: false, error: lib.error ?? 'library fetch failed' };
+					}
+					try {
+						const res = await fetch(`${API_BASE}/sync/epic/import`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ games: lib.items }),
+						});
+						if (!res.ok) {
+							return {
+								ok: false,
+								error: `API ${res.status}: ${await res.text()}`,
+							};
+						}
+						return (await res.json()) as {
+							ok: boolean;
+							total?: number;
+							matched?: number;
+							already_matched?: number;
+							unmatched?: number;
+						};
+					} catch (e) {
+						return {
+							ok: false,
+							error: e instanceof Error ? e.message : String(e),
+						};
+					}
+				},
 			},
 			messages: {},
 		},

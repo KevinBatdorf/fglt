@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DockerStatus, UpdaterStatus } from '../shared/types';
+import type { DockerStatus, EpicStatus, UpdaterStatus } from '../shared/types';
 import { GameImage } from './GameImage';
 import { Select } from './Select';
 import {
@@ -143,7 +143,7 @@ export function Settings({
 				extraLibrarySources={
 					<>
 						<GogConnect onSyncComplete={onStatsRefresh} />
-						<EpicConnect />
+						<EpicConnect onSyncComplete={onStatsRefresh} />
 					</>
 				}
 			/>
@@ -266,7 +266,7 @@ export function Settings({
 				</h2>
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
 					<label className="flex items-center gap-3 text-sm text-zinc-300">
-						<span className="flex-1">Card size</span>
+						<span className="flex-1">Max card size</span>
 						<input
 							type="range"
 							min={CARD_WIDTH_MIN}
@@ -540,6 +540,27 @@ export function Settings({
 	);
 }
 
+/**
+ * Format the System status "Last sync" cell — combines the last
+ * timestamp with how soon the next sync will fire (computed by
+ * /health from the cron expression).
+ */
+function lastSyncLabel(
+	lastIso: string | null,
+	nextIso: string | null,
+): string {
+	const last = lastIso ? new Date(lastIso).toLocaleString() : 'Never';
+	if (!nextIso) return last;
+	const ms = new Date(nextIso).getTime() - Date.now();
+	if (!Number.isFinite(ms) || ms < 0) return `${last} · next sync soon`;
+	const minutes = Math.round(ms / 60_000);
+	if (minutes < 60) return `${last} · next sync in ${minutes}m`;
+	const hours = Math.round(minutes / 60);
+	if (hours < 36) return `${last} · next sync in ${hours}h`;
+	const days = Math.round(hours / 24);
+	return `${last} · next sync in ${days}d`;
+}
+
 function StatTile({ label, value }: { label: string; value: number | string }) {
 	return (
 		<div className="bg-zinc-900 border border-zinc-800 rounded-md py-2.5 px-3">
@@ -658,9 +679,7 @@ function SystemStatusSection() {
 							},
 							{
 								label: 'Last sync',
-								value: health.last_sync
-									? new Date(health.last_sync).toLocaleString()
-									: 'Never',
+								value: lastSyncLabel(health.last_sync, health.next_sync),
 								ok: !!health.last_sync,
 							},
 						],
@@ -988,22 +1007,243 @@ function GogConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
  * bundle legendary or build our own scraper, this section is just
  * honest copy explaining the situation.
  */
-function EpicConnect() {
+/**
+ * Epic Games connect/sync flow. Three states tracked from
+ * `rpc.request.epicStatus()`:
+ *   1. not_installed — show install instructions for legendary-gl
+ *   2. not_authed    — "Open Epic sign-in" + paste-code field
+ *   3. authed        — "Sync library" / "Disconnect" buttons
+ *
+ * The auth flow is similar to GOG's: open a URL in the browser, user
+ * signs in, copies the `authorizationCode` value out of the JSON
+ * landing page, pastes it back here. We then shell out to
+ * `legendary auth --code <CODE>` via the bun-side RPC.
+ *
+ * Library import: bun side runs `legendary list --json`, POSTs the
+ * library to /sync/epic/import (the API container does the storesearch
+ * + DB upsert — same matching pipeline as GOG).
+ */
+function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
+	const [status, setStatus] = useState<EpicStatus | null>(null);
+	const [code, setCode] = useState('');
+	const [busy, setBusy] = useState<null | 'connect' | 'sync' | 'disconnect'>(
+		null,
+	);
+	const [msg, setMsg] = useState<string | null>(null);
+	const [showCodeForm, setShowCodeForm] = useState(false);
+
+	async function refresh() {
+		try {
+			const s = await rpc.request.epicStatus({});
+			setStatus(s);
+		} catch {
+			setStatus({ kind: 'not_installed' });
+		}
+	}
+
+	useEffect(() => {
+		void refresh();
+	}, []);
+
+	async function openSignIn() {
+		await rpc.request.openUrl({ url: 'https://legendary.gl/epiclogin' });
+		setShowCodeForm(true);
+		setMsg(
+			'Sign in to Epic in the browser. After login you\'ll see a JSON page — copy the long "authorizationCode" value and paste it below.',
+		);
+	}
+
+	async function connect() {
+		// Tolerate "authorizationCode": "abc..." JSON snippets pasted
+		// whole — extract the value with a simple regex if it looks like
+		// the JSON page rather than the bare code.
+		let trimmed = code.trim();
+		const m = trimmed.match(/"authorizationCode"\s*:\s*"([^"]+)"/);
+		if (m) trimmed = m[1];
+		if (!trimmed) {
+			setMsg('Paste the authorization code first.');
+			return;
+		}
+		setBusy('connect');
+		setMsg(null);
+		try {
+			const r = await rpc.request.epicAuthExchange({ code: trimmed });
+			if (!r.ok) {
+				setMsg(`Failed: ${r.error ?? 'unknown'}`);
+				return;
+			}
+			setCode('');
+			setShowCodeForm(false);
+			setMsg('Connected. Click "Sync Epic library now" to import.');
+			await refresh();
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function sync() {
+		setBusy('sync');
+		setMsg('Syncing Epic library — this can take a few minutes…');
+		try {
+			const r = await rpc.request.epicSync({});
+			if (!r.ok) {
+				setMsg(`Failed: ${r.error ?? 'unknown'}`);
+				return;
+			}
+			setMsg(
+				`Sync done — ${r.matched ?? 0} new matches, ${r.already_matched ?? 0} already in library, ${r.unmatched ?? 0} couldn't match a Steam game.`,
+			);
+			onSyncComplete();
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function disconnect() {
+		if (
+			!confirm(
+				'Disconnect Epic? Your imported games stay; only the local Epic tokens are forgotten.',
+			)
+		)
+			return;
+		setBusy('disconnect');
+		try {
+			const r = await rpc.request.epicLogout({});
+			setMsg(r.ok ? 'Disconnected.' : `Failed: ${r.error ?? 'unknown'}`);
+			await refresh();
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	const kind = status?.kind ?? 'loading';
+
 	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-2">
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
 			<div className="flex items-baseline justify-between gap-3 flex-wrap">
 				<div>
 					<div className="text-sm font-medium">Epic Games</div>
 					<p className="text-xs text-zinc-500 mt-1">
-						Epic doesn't publish a library API, so we can't add a
-						one-click flow yet. There's no in-app sync; it's on the
-						roadmap. If you really want Epic ownership matched right
-						now, you'd need to clone this project from source — which
-						isn't a realistic ask. Skip for now.
+						Epic has no public library API — we drive the third-party{' '}
+						<code>legendary-gl</code> CLI installed on your machine.
+						One-time install, then everything happens in-app.
 					</p>
 				</div>
-				<span className="text-xs text-zinc-500">Not yet supported</span>
+				<div className="text-xs tabular-nums">
+					{kind === 'loading' && (
+						<span className="text-zinc-500">Checking…</span>
+					)}
+					{kind === 'not_installed' && (
+						<span className="text-amber-300">legendary not installed</span>
+					)}
+					{kind === 'not_authed' && (
+						<span className="text-zinc-500">Not connected</span>
+					)}
+					{kind === 'authed' && (
+						<span className="text-emerald-300">
+							Connected{status?.kind === 'authed' && status.account ? ` as ${status.account}` : ''}
+						</span>
+					)}
+				</div>
 			</div>
+
+			{kind === 'not_installed' && (
+				<div className="space-y-2 text-xs text-zinc-400">
+					<p>
+						Install the legendary CLI (one-time, ~5 min):
+					</p>
+					<ol className="list-decimal pl-5 space-y-1">
+						<li>
+							Install Python 3 if you don't have it (
+							<button
+								type="button"
+								onClick={() =>
+									rpc.request.openUrl({ url: 'https://www.python.org/downloads/' })
+								}
+								className="underline hover:no-underline text-zinc-300"
+							>
+								python.org/downloads
+							</button>
+							).
+						</li>
+						<li>
+							In a terminal:{' '}
+							<code className="text-zinc-300">
+								pip install --user legendary-gl
+							</code>
+						</li>
+						<li>
+							Restart this app, then come back here.
+						</li>
+					</ol>
+					<button
+						type="button"
+						onClick={() => void refresh()}
+						className="mt-2 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium"
+					>
+						Re-check
+					</button>
+				</div>
+			)}
+
+			{kind === 'not_authed' && (
+				<div className="space-y-2">
+					{!showCodeForm && (
+						<button
+							type="button"
+							onClick={() => void openSignIn()}
+							className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+						>
+							Open Epic sign-in
+						</button>
+					)}
+					{showCodeForm && (
+						<div className="flex gap-2">
+							<input
+								type="text"
+								value={code}
+								onChange={(e) => setCode(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') void connect();
+								}}
+								placeholder="Paste authorization code or full JSON snippet"
+								className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-zinc-600"
+							/>
+							<button
+								type="button"
+								onClick={() => void connect()}
+								disabled={busy !== null || !code.trim()}
+								className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+							>
+								{busy === 'connect' ? 'Connecting…' : 'Connect'}
+							</button>
+						</div>
+					)}
+				</div>
+			)}
+
+			{kind === 'authed' && (
+				<div className="flex flex-wrap gap-2">
+					<button
+						type="button"
+						onClick={() => void sync()}
+						disabled={busy !== null}
+						className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+					>
+						{busy === 'sync' ? 'Syncing…' : 'Sync Epic library now'}
+					</button>
+					<button
+						type="button"
+						onClick={() => void disconnect()}
+						disabled={busy !== null}
+						className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-40"
+					>
+						{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+					</button>
+				</div>
+			)}
+
+			{msg && <div className="text-xs text-zinc-400 break-words">{msg}</div>}
 		</div>
 	);
 }
