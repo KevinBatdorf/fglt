@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DockerStatus, UpdaterStatus } from '../shared/types';
 import { GameImage } from './GameImage';
 import {
@@ -931,13 +931,16 @@ function ConfigurationSection({
 		void load(false);
 	}, []);
 
-	// One-shot: when loaded config arrives, pre-fill the budget fields
-	// with their defaults if the user hasn't set them yet. Same logic as
-	// the AI mode-switch defaults — show real values in the inputs so
-	// the user knows what's effective. Saving with these untouched is
-	// fine; it just persists the default explicitly.
+	// One-shot: on the FIRST loaded-snapshot we get from the server,
+	// pre-fill the budget fields with their defaults if the user hasn't
+	// set them yet. This must NOT re-fire on subsequent loaded changes
+	// (i.e. after a Save) — otherwise the page perpetually looks dirty
+	// because we keep re-injecting "80" / "20" into draft.
+	const budgetsPrefilled = useRef(false);
 	useEffect(() => {
 		if (!loaded) return;
+		if (budgetsPrefilled.current) return;
+		budgetsPrefilled.current = true;
 		const defaults: Partial<Record<ConfigKey, string>> = {
 			HLTB_DAILY_BUDGET: '80',
 			OPENCRITIC_DAILY_BUDGET: '20',
@@ -1065,7 +1068,10 @@ function ConfigurationSection({
 						/>
 					</FieldGroup>
 
-					<AIProviderSection {...fieldProps} />
+					<AIProviderSection
+						{...fieldProps}
+						loadedSnapshot={loaded ?? {}}
+					/>
 
 					<FieldGroup
 						title="Enrichment (optional)"
@@ -1182,10 +1188,12 @@ function AIProviderSection(props: {
 	revealed: Set<ConfigKey>;
 	onReveal: (k: ConfigKey) => Promise<void>;
 	requiredMissing: string[];
+	loadedSnapshot: Partial<Record<ConfigKey, string>>;
 }) {
-	const { valueFor, setValueFor } = props;
+	const { valueFor, setValueFor, loadedSnapshot } = props;
 	const ollamaUrl = valueFor('OLLAMA_URL').trim();
 	const aiBaseUrl = valueFor('AI_BASE_URL').trim();
+	const aiApiKey = valueFor('AI_API_KEY').trim();
 
 	// The user's "intent" is derived from which fields actually have
 	// values. AI_BASE_URL wins over OLLAMA_URL (matches resolve() in
@@ -1196,13 +1204,21 @@ function AIProviderSection(props: {
 			? 'ollama'
 			: 'none';
 
-	// Local mode toggle. Re-syncs from the loaded values on every change
-	// so that an external edit (or Save bringing new data in) updates the
-	// radio without a stale cache.
+	// Local mode toggle. Initialised once from the loaded snapshot via
+	// `detectedMode`; after that, the user's explicit clicks are
+	// authoritative. We deliberately do NOT re-sync to detectedMode on
+	// every render — doing so created a flicker where Save would clear
+	// the draft, briefly read stale loaded values, and snap the toggle
+	// back to the previous mode before settling on the right one.
 	const [mode, setMode] = useState<AIMode>(detectedMode);
+	// Re-init only when an external change makes loaded look meaningfully
+	// different from the user's chosen mode (e.g. an outside save). We
+	// gate on `loadedSnapshot` reference so it only fires when the parent
+	// actually swaps loaded, not on every render.
 	useEffect(() => {
 		setMode(detectedMode);
-	}, [detectedMode]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [loadedSnapshot]);
 
 	function changeMode(next: AIMode) {
 		setMode(next);
@@ -1267,6 +1283,14 @@ function AIProviderSection(props: {
 				/>
 			</div>
 
+			<AIPreview
+				mode={mode}
+				ollamaUrl={ollamaUrl}
+				aiBaseUrl={aiBaseUrl}
+				aiApiKey={aiApiKey}
+				loadedSnapshot={loadedSnapshot}
+			/>
+
 			{mode === 'none' && (
 				<p className="text-xs text-zinc-500">
 					No AI configured. You can come back here any time.
@@ -1330,6 +1354,101 @@ function AIProviderSection(props: {
 					/>
 				</div>
 			)}
+		</div>
+	);
+}
+
+/**
+ * Live "what's about to be saved" line under the mode buttons. Tells
+ * the user EXACTLY what AI provider is about to be configured (or what
+ * the form is missing), AND whether that matches the currently-saved
+ * state. Without this the user picks 'Local Ollama', sees the fields
+ * fill in, and is confused that the page header still says "AI: Disabled"
+ * — that header reads /health which only updates after Save.
+ */
+function AIPreview({
+	mode,
+	ollamaUrl,
+	aiBaseUrl,
+	aiApiKey,
+	loadedSnapshot,
+}: {
+	mode: AIMode;
+	ollamaUrl: string;
+	aiBaseUrl: string;
+	aiApiKey: string;
+	loadedSnapshot: Partial<Record<ConfigKey, string>>;
+}) {
+	let kind: 'ok' | 'warn' | 'missing' = 'ok';
+	let preview = '';
+
+	if (mode === 'none') {
+		preview = 'AI off — semantic search disabled, vibe chips static.';
+	} else if (mode === 'ollama') {
+		if (!ollamaUrl) {
+			kind = 'missing';
+			preview = 'Ollama URL is empty — fill it in to enable AI.';
+		} else {
+			preview = `Will use local Ollama at ${ollamaUrl}.`;
+		}
+	} else {
+		// cloud
+		if (!aiBaseUrl) {
+			kind = 'missing';
+			preview = 'API base URL is empty — fill it in to enable AI.';
+		} else if (!aiApiKey) {
+			kind = 'missing';
+			preview = `API base URL set (${aiBaseUrl}) but key is empty — fill it in.`;
+		} else {
+			preview = `Will use cloud provider at ${aiBaseUrl}.`;
+		}
+	}
+
+	// Compare the form's effective intent against the loaded (saved) state
+	// so we can tell the user "this matches what's already saved" vs.
+	// "click Save to apply."
+	const savedOllama = (loadedSnapshot.OLLAMA_URL ?? '').trim();
+	const savedBase = (loadedSnapshot.AI_BASE_URL ?? '').trim();
+	// Note: saved API key arrives masked (••••<last4>) — we only check
+	// presence, not equality. Good enough for the active/unsaved check.
+	const savedKeyPresent = (loadedSnapshot.AI_API_KEY ?? '').trim().length > 0;
+	const savedMode: AIMode = savedBase
+		? 'cloud'
+		: savedOllama
+			? 'ollama'
+			: 'none';
+	const matchesSaved =
+		mode === savedMode &&
+		(mode === 'none' ||
+			(mode === 'ollama' && ollamaUrl === savedOllama) ||
+			(mode === 'cloud' &&
+				aiBaseUrl === savedBase &&
+				// If the user typed a new key, it's an unsaved change. If
+				// they kept the masked placeholder, it matches saved.
+				(isMaskedValue(aiApiKey) ? savedKeyPresent : !aiApiKey && !savedKeyPresent)));
+
+	const status =
+		kind === 'missing'
+			? 'Won\'t save (incomplete)'
+			: matchesSaved
+				? 'Active'
+				: 'Click Save to apply';
+
+	const style =
+		kind === 'missing'
+			? 'border-red-700 bg-red-950/40 text-red-100'
+			: matchesSaved
+				? 'border-emerald-700 bg-emerald-950/40 text-emerald-200'
+				: 'border-sky-700 bg-sky-950/40 text-sky-100';
+
+	return (
+		<div
+			className={`rounded-md border px-3 py-1.5 text-xs flex items-baseline justify-between gap-3 ${style}`}
+		>
+			<span>{preview}</span>
+			<span className="text-[10px] uppercase tracking-wider opacity-80 whitespace-nowrap">
+				{status}
+			</span>
 		</div>
 	);
 }
