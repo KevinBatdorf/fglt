@@ -931,6 +931,27 @@ function ConfigurationSection({
 		void load(false);
 	}, []);
 
+	// One-shot: when loaded config arrives, pre-fill the budget fields
+	// with their defaults if the user hasn't set them yet. Same logic as
+	// the AI mode-switch defaults — show real values in the inputs so
+	// the user knows what's effective. Saving with these untouched is
+	// fine; it just persists the default explicitly.
+	useEffect(() => {
+		if (!loaded) return;
+		const defaults: Partial<Record<ConfigKey, string>> = {
+			HLTB_DAILY_BUDGET: '80',
+			OPENCRITIC_DAILY_BUDGET: '20',
+		};
+		setDraft((prev) => {
+			const next = { ...prev };
+			for (const [k, v] of Object.entries(defaults) as [ConfigKey, string][]) {
+				if (k in next) continue;
+				if ((loaded[k] ?? '').trim().length === 0) next[k] = v;
+			}
+			return next;
+		});
+	}, [loaded]);
+
 	async function reveal(key: ConfigKey) {
 		// Pull JUST the revealed value via a single targeted refetch with
 		// reveal=1. We then strip every other sensitive value back to its
@@ -1023,14 +1044,14 @@ function ConfigurationSection({
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
 					<FieldGroup
 						title="Required"
-						subtitle="Library sync needs both. Get the API key from Steam's dev portal; the 64-bit Steam ID from steamid.io."
+						subtitle="Library sync needs both. Click the link next to each field to get yours."
 					>
 						<ConfigField
 							{...fieldProps}
 							keyName="STEAM_API_KEY"
 							label="Steam API key"
 							sensitive
-							placeholder="32-char hex string"
+							helpText="A 32-char hex string from the Steam dev portal."
 							helpUrl="https://steamcommunity.com/dev/apikey"
 							helpUrlLabel="Get one"
 						/>
@@ -1038,78 +1059,24 @@ function ConfigurationSection({
 							{...fieldProps}
 							keyName="STEAM_ID"
 							label="Steam ID (64-bit)"
-							placeholder="76561198…"
+							helpText="A 17-digit number starting with 76561. Paste your Steam profile URL into steamid.io to find it."
 							helpUrl="https://steamid.io/"
 							helpUrlLabel="Find yours"
 						/>
 					</FieldGroup>
 
-					<FieldGroup
-						title="AI provider (optional)"
-						subtitle="Powers semantic search and vibe-chip generation. Without it, search falls back to keyword-only and vibe chips become a static list. Pick ONE of the two paths below — the local one (Ollama) is free and private."
-					>
-						<AIStatusLine
-							ollamaUrl={valueFor('OLLAMA_URL')}
-							aiBaseUrl={valueFor('AI_BASE_URL')}
-							aiApiKey={valueFor('AI_API_KEY')}
-						/>
-						<SubHeading
-							label="Option A · Local Ollama"
-							hint="Install Ollama on your machine, pull the models, point this URL at it. Nothing leaves your computer."
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="OLLAMA_URL"
-							label="Ollama URL"
-							placeholder="http://host.docker.internal:11434"
-							helpUrl="https://ollama.com/download"
-							helpUrlLabel="Get Ollama"
-						/>
-						<SubHeading
-							label="Option B · Cloud provider"
-							hint="OpenAI, Groq, Together, or anything else with an OpenAI-compatible API. Fill in BOTH fields. Leave blank if you're using Ollama."
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="AI_BASE_URL"
-							label="API base URL"
-							placeholder="https://api.openai.com/v1"
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="AI_API_KEY"
-							label="API key"
-							sensitive
-							placeholder="sk-…"
-						/>
-						<SubHeading
-							label="Models"
-							hint="Defaults work for most setups. Override only if you've pulled different models on your Ollama, or want to use a specific cloud model."
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="AI_CHAT_MODEL"
-							label="Chat model"
-							placeholder="qwen3:14b"
-						/>
-						<ConfigField
-							{...fieldProps}
-							keyName="AI_EMBED_MODEL"
-							label="Embed model"
-							placeholder="nomic-embed-text"
-						/>
-					</FieldGroup>
+					<AIProviderSection {...fieldProps} />
 
 					<FieldGroup
 						title="Enrichment (optional)"
-						subtitle="External score / metadata sources. Each is opt-in — the library is fully usable without them. YouTube uses Google's free 10k unit/day quota; OpenCritic goes through RapidAPI."
+						subtitle="External metadata sources. Each is opt-in — the library is fully usable without any of them."
 					>
 						<ConfigField
 							{...fieldProps}
 							keyName="YOUTUBE_API_KEY"
 							label="YouTube API key"
 							sensitive
-							placeholder="AIza…"
+							helpText="Adds gameplay videos to each game's detail page. Free 10k-units/day quota from Google. Without this, the videos panel stays empty."
 							helpUrl="https://console.cloud.google.com/apis/credentials"
 							helpUrlLabel="Create"
 						/>
@@ -1118,7 +1085,7 @@ function ConfigurationSection({
 							keyName="OPENCRITIC_API_KEY"
 							label="OpenCritic (RapidAPI) key"
 							sensitive
-							placeholder="RapidAPI key"
+							helpText="Adds aggregated critic scores alongside Metacritic. Free RapidAPI tier is ~25 lookups/day."
 							helpUrl="https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api"
 							helpUrlLabel="Sign up"
 						/>
@@ -1126,13 +1093,13 @@ function ConfigurationSection({
 							{...fieldProps}
 							keyName="HLTB_DAILY_BUDGET"
 							label="HowLongToBeat daily budget"
-							placeholder="80"
+							helpText="Max HLTB lookups per day. They don't publish a rate limit but get cranky above ~100/day."
 						/>
 						<ConfigField
 							{...fieldProps}
 							keyName="OPENCRITIC_DAILY_BUDGET"
 							label="OpenCritic daily budget"
-							placeholder="20"
+							helpText="Max OpenCritic lookups per day. Stay under your RapidAPI plan's quota."
 						/>
 					</FieldGroup>
 				</div>
@@ -1194,88 +1161,216 @@ function FieldGroup({
 }
 
 /**
- * Live status pill for the AI section. Reads the current form values
- * (NOT the saved DB state — so the user gets feedback as they type) and
- * tells them exactly what's missing or what's effectively configured.
+ * AI provider section — radio-driven. The user picks ONE of:
+ *   - None   (no AI, search is keyword-only)
+ *   - Local Ollama  (one URL + optional model overrides)
+ *   - Cloud (OpenAI/Groq/etc.)  (URL + key + model names)
  *
- * Logic mirrors `resolve()` in src/lib/ai.ts: AI_BASE_URL wins over
- * OLLAMA_URL when both are set; an API key is required for cloud
- * providers but optional for Ollama (which ignores it).
+ * The model fields render with mode-aware hints — Ollama mode shows the
+ * default model names (which actually work); cloud mode shows examples
+ * (no default works generically since "qwen3:14b" isn't an OpenAI model).
+ *
+ * Switching modes clears the fields the OTHER mode uses, so a Save
+ * doesn't leave both options set (which the backend would resolve in
+ * cloud's favor and silently ignore the Ollama URL).
  */
-function AIStatusLine({
-	ollamaUrl,
-	aiBaseUrl,
-	aiApiKey,
-}: {
-	ollamaUrl: string;
-	aiBaseUrl: string;
-	aiApiKey: string;
+type AIMode = 'none' | 'ollama' | 'cloud';
+
+function AIProviderSection(props: {
+	valueFor: (k: ConfigKey) => string;
+	setValueFor: (k: ConfigKey, v: string) => void;
+	revealed: Set<ConfigKey>;
+	onReveal: (k: ConfigKey) => Promise<void>;
+	requiredMissing: string[];
 }) {
-	const hasOllama = ollamaUrl.trim().length > 0;
-	const hasCloud = aiBaseUrl.trim().length > 0;
-	const hasKey = aiApiKey.trim().length > 0;
+	const { valueFor, setValueFor } = props;
+	const ollamaUrl = valueFor('OLLAMA_URL').trim();
+	const aiBaseUrl = valueFor('AI_BASE_URL').trim();
 
-	let kind: 'ok' | 'warn' | 'missing' = 'missing';
-	let message = '';
+	// The user's "intent" is derived from which fields actually have
+	// values. AI_BASE_URL wins over OLLAMA_URL (matches resolve() in
+	// src/lib/ai.ts), so cloud takes precedence when both are filled.
+	const detectedMode: AIMode = aiBaseUrl
+		? 'cloud'
+		: ollamaUrl
+			? 'ollama'
+			: 'none';
 
-	if (!hasOllama && !hasCloud) {
-		kind = 'missing';
-		message =
-			'Not configured — fill in EITHER Option A (Ollama URL) OR Option B (API URL + key).';
-	} else if (hasCloud && hasOllama) {
-		kind = 'warn';
-		message = `Both options set — cloud (${aiBaseUrl.trim()}) will win and Ollama URL will be ignored. Clear one to disambiguate.`;
-	} else if (hasCloud && !hasKey) {
-		kind = 'warn';
-		message = `Cloud URL set (${aiBaseUrl.trim()}) but API key is missing — fill it in below or the API will reject calls.`;
-	} else if (hasCloud) {
-		kind = 'ok';
-		message = `Using cloud provider at ${aiBaseUrl.trim()}.`;
-	} else {
-		kind = 'ok';
-		message = `Using local Ollama at ${ollamaUrl.trim()}.`;
+	// Local mode toggle. Re-syncs from the loaded values on every change
+	// so that an external edit (or Save bringing new data in) updates the
+	// radio without a stale cache.
+	const [mode, setMode] = useState<AIMode>(detectedMode);
+	useEffect(() => {
+		setMode(detectedMode);
+	}, [detectedMode]);
+
+	function changeMode(next: AIMode) {
+		setMode(next);
+		// Clear fields belonging to the OTHER mode so a Save commits a
+		// clean intent. Empty string deletes the row server-side.
+		if (next === 'none') {
+			setValueFor('OLLAMA_URL', '');
+			setValueFor('AI_BASE_URL', '');
+			setValueFor('AI_API_KEY', '');
+			setValueFor('AI_CHAT_MODEL', '');
+			setValueFor('AI_EMBED_MODEL', '');
+		} else if (next === 'ollama') {
+			setValueFor('AI_BASE_URL', '');
+			setValueFor('AI_API_KEY', '');
+			// Pre-fill the Ollama defaults so the user sees real values in
+			// the inputs they can edit or just save. Only fill empty
+			// fields — preserve anything already set.
+			if (!valueFor('OLLAMA_URL').trim())
+				setValueFor('OLLAMA_URL', 'http://host.docker.internal:11434');
+			if (!valueFor('AI_CHAT_MODEL').trim())
+				setValueFor('AI_CHAT_MODEL', 'qwen3:14b');
+			if (!valueFor('AI_EMBED_MODEL').trim())
+				setValueFor('AI_EMBED_MODEL', 'nomic-embed-text');
+		} else if (next === 'cloud') {
+			setValueFor('OLLAMA_URL', '');
+			// Don't pre-fill cloud fields — there's no default that works
+			// generically (different providers use different model names).
+			// User must type their own.
+		}
 	}
 
-	const style =
-		kind === 'ok'
-			? 'border-emerald-700 bg-emerald-950/40 text-emerald-200'
-			: kind === 'warn'
-				? 'border-amber-700 bg-amber-950/40 text-amber-100'
-				: 'border-red-700 bg-red-950/40 text-red-100';
-	const icon = kind === 'ok' ? '✓' : kind === 'warn' ? '!' : '✗';
 	return (
-		<div className={`rounded-md border px-3 py-1.5 text-xs ${style}`}>
-			<span className="font-mono mr-1.5" aria-hidden>
-				{icon}
-			</span>
-			{message}
+		<div className="p-4 space-y-3">
+			<div>
+				<div className="text-sm font-medium text-zinc-200">
+					AI provider (optional)
+				</div>
+				<p className="text-xs text-zinc-500 mt-0.5">
+					Powers semantic search and vibe-chip generation. Without it,
+					search falls back to keyword-only and vibe chips become a static
+					list.
+				</p>
+			</div>
+			<div className="flex flex-wrap gap-2">
+				<ModeButton
+					active={mode === 'none'}
+					onClick={() => changeMode('none')}
+					label="None"
+					hint="Keyword search only"
+				/>
+				<ModeButton
+					active={mode === 'ollama'}
+					onClick={() => changeMode('ollama')}
+					label="Local Ollama"
+					hint="Free, private, runs on your machine"
+				/>
+				<ModeButton
+					active={mode === 'cloud'}
+					onClick={() => changeMode('cloud')}
+					label="Cloud provider"
+					hint="OpenAI, Groq, Together, …"
+				/>
+			</div>
+
+			{mode === 'none' && (
+				<p className="text-xs text-zinc-500">
+					No AI configured. You can come back here any time.
+				</p>
+			)}
+
+			{mode === 'ollama' && (
+				<div className="space-y-2 pt-2 border-t border-zinc-800/60">
+					<ConfigField
+						{...props}
+						keyName="OLLAMA_URL"
+						label="Ollama URL"
+						helpUrl="https://ollama.com/download"
+						helpUrlLabel="Get Ollama"
+					/>
+					<ConfigField
+						{...props}
+						keyName="AI_CHAT_MODEL"
+						label="Chat model"
+					/>
+					<ConfigField
+						{...props}
+						keyName="AI_EMBED_MODEL"
+						label="Embed model"
+					/>
+					<p className="text-[11px] text-zinc-500">
+						Defaults shown above. Make sure you've pulled both models in
+						Ollama (
+						<code className="text-zinc-400">ollama pull &lt;name&gt;</code>
+						) before hitting Save.
+					</p>
+				</div>
+			)}
+
+			{mode === 'cloud' && (
+				<div className="space-y-2 pt-2 border-t border-zinc-800/60">
+					<ConfigField
+						{...props}
+						keyName="AI_BASE_URL"
+						label="API base URL"
+						helpText="Required. Your provider's OpenAI-compatible URL. For OpenAI: https://api.openai.com/v1"
+					/>
+					<ConfigField
+						{...props}
+						keyName="AI_API_KEY"
+						label="API key"
+						sensitive
+						helpText="Required. From your provider's dashboard."
+					/>
+					<ConfigField
+						{...props}
+						keyName="AI_CHAT_MODEL"
+						label="Chat model"
+						helpText="Required. A model name your provider serves. For OpenAI: gpt-4o-mini works well."
+					/>
+					<ConfigField
+						{...props}
+						keyName="AI_EMBED_MODEL"
+						label="Embed model"
+						helpText="Required. An embedding model. For OpenAI: text-embedding-3-small works well."
+					/>
+				</div>
+			)}
 		</div>
 	);
 }
 
-/**
- * In-group divider for FieldGroups that need to break a long list of
- * fields into "do this OR that" sub-sections (currently just AI
- * provider — Ollama path vs. cloud path).
- */
-function SubHeading({ label, hint }: { label: string; hint?: string }) {
+function ModeButton({
+	active,
+	onClick,
+	label,
+	hint,
+}: {
+	active: boolean;
+	onClick: () => void;
+	label: string;
+	hint: string;
+}) {
 	return (
-		<div className="pt-2 border-t border-zinc-800/60">
-			<div className="text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
+		<button
+			type="button"
+			onClick={onClick}
+			className={`flex-1 min-w-[140px] text-left px-3 py-2 rounded-md border transition-colors ${
+				active
+					? 'border-emerald-600 bg-emerald-950/40 text-emerald-100'
+					: 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+			}`}
+		>
+			<div className="text-xs font-semibold flex items-center gap-1.5">
+				<span aria-hidden>{active ? '●' : '○'}</span>
 				{label}
 			</div>
-			{hint && <p className="text-[11px] text-zinc-500 mt-0.5">{hint}</p>}
-		</div>
+			<div className="text-[10px] text-zinc-500 mt-0.5">{hint}</div>
+		</button>
 	);
 }
 
 function ConfigField({
 	keyName,
 	label,
-	placeholder,
 	sensitive = false,
 	helpUrl,
 	helpUrlLabel,
+	helpText,
 	valueFor,
 	setValueFor,
 	revealed,
@@ -1284,10 +1379,17 @@ function ConfigField({
 }: {
 	keyName: ConfigKey;
 	label: string;
-	placeholder?: string;
 	sensitive?: boolean;
 	helpUrl?: string;
 	helpUrlLabel?: string;
+	/**
+	 * Always-visible description below the field. Use for "what is this
+	 * field, where do you get it" copy. Defaults are pre-filled into
+	 * the input value at the parent level (see ConfigurationSection's
+	 * mount effect + AIProviderSection's mode switch) — never as
+	 * placeholder text.
+	 */
+	helpText?: string;
 	valueFor: (k: ConfigKey) => string;
 	setValueFor: (k: ConfigKey, v: string) => void;
 	revealed: Set<ConfigKey>;
@@ -1312,7 +1414,6 @@ function ConfigField({
 					id={`cfg-${keyName}`}
 					type={isSensitiveMasked ? 'password' : 'text'}
 					value={value}
-					placeholder={placeholder}
 					onChange={(e) => setValueFor(keyName, e.target.value)}
 					onFocus={(e) => {
 						// Clicking into a masked field clears the placeholder
@@ -1351,6 +1452,12 @@ function ConfigField({
 					</button>
 				)}
 			</div>
+			{helpText && (
+				<>
+					<div /> {/* spacer to align with the label column */}
+					<p className="text-[11px] text-zinc-500 -mt-1">{helpText}</p>
+				</>
+			)}
 		</div>
 	);
 }
