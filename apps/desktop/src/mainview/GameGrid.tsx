@@ -1,23 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { InstalledIndex } from '../shared/types';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { GameCard } from './GameCard';
 import type { LibraryGame } from './lib/api';
-import { getCardsPerRow } from './lib/prefs';
-
-/**
- * Below this card width, drop a column. Picked so a card always has
- * enough room for the header image + title + tag chips without
- * truncating illegibly.
- */
-const MIN_CARD_WIDTH_PX = 160;
+import { getCardMinWidth } from './lib/prefs';
 
 interface Props {
 	games: LibraryGame[];
 	installed: InstalledIndex | null;
 	onSelect: (appid: number) => void;
 	showMatchPct?: boolean;
-	/** If set, cap items at this many rows × the cards-per-row pref. */
+	/** If set, cap items at this many rows × the auto-fit column count. */
 	maxRows?: number;
 	/**
 	 * If provided, right-clicking a card opens a context menu populated
@@ -28,15 +21,14 @@ interface Props {
 }
 
 /**
- * Cards-per-row is a user pref but the grid drops columns when the
- * window narrows below a per-card minimum — so resizing the window
- * actually reflows instead of squishing cards into illegible
- * thumbnails. Pref acts as the MAX (preferred) count; actual count is
- * `min(pref, floor(containerWidth / MIN_CARD_WIDTH))`.
+ * Card size is the user-controlled pref (the "Card size" slider in
+ * Settings). The grid uses CSS `repeat(auto-fill, minmax(N, 1fr))` —
+ * it picks as many columns as fit, each at least N px, and stretches
+ * to fill the row. Resize the window and columns drop/grow smoothly
+ * with no JS measurement.
  *
- * ResizeObserver tracks the grid container so this updates live.
- * Listens for the pref-change event too, so editing the slider in
- * Settings reflows without a remount.
+ * Listens for the pref-change event so editing the slider reflows
+ * without a remount.
  */
 export function GameGrid({
 	games,
@@ -46,9 +38,7 @@ export function GameGrid({
 	maxRows,
 	cardContextMenu,
 }: Props) {
-	const [prefPerRow, setPrefPerRow] = useState(getCardsPerRow);
-	const [containerWidth, setContainerWidth] = useState(0);
-	const containerRef = useRef<HTMLDivElement>(null);
+	const [minWidth, setMinWidth] = useState(getCardMinWidth);
 	const [menu, setMenu] = useState<{
 		x: number;
 		y: number;
@@ -56,42 +46,27 @@ export function GameGrid({
 	} | null>(null);
 
 	useEffect(() => {
-		const handler = () => setPrefPerRow(getCardsPerRow());
-		window.addEventListener('fglt:prefs:cards-per-row', handler);
-		return () => window.removeEventListener('fglt:prefs:cards-per-row', handler);
+		const handler = () => setMinWidth(getCardMinWidth());
+		window.addEventListener('fglt:prefs:card-width', handler);
+		return () => window.removeEventListener('fglt:prefs:card-width', handler);
 	}, []);
 
-	useEffect(() => {
-		const el = containerRef.current;
-		if (!el) return;
-		const ro = new ResizeObserver((entries) => {
-			for (const e of entries) setContainerWidth(e.contentRect.width);
-		});
-		ro.observe(el);
-		// Seed immediately so the first render isn't a 1-column flash.
-		setContainerWidth(el.getBoundingClientRect().width);
-		return () => ro.disconnect();
-	}, []);
-
-	// Width-based cap. We approximate the gap as 12px (Tailwind gap-3) so
-	// the math is `(width + gap) / (minCardWidth + gap)`. Floor clamped
-	// to at least 1 column so tiny windows still render something.
-	const widthCap =
-		containerWidth > 0
-			? Math.max(
-					1,
-					Math.floor((containerWidth + 12) / (MIN_CARD_WIDTH_PX + 12)),
-				)
-			: prefPerRow;
-	const perRow = Math.min(prefPerRow, widthCap);
-	const visible = maxRows ? games.slice(0, perRow * maxRows) : games;
+	// maxRows × an estimated columns count. We can't know the actual
+	// column count without measuring, so this approximates by assuming
+	// the container is the typical content width (~1200px). Used only
+	// for the "show me 1-2 rows of recommendations" home-page panels;
+	// being slightly off is harmless.
+	const visible = maxRows
+		? games.slice(0, Math.ceil(1200 / minWidth) * maxRows)
+		: games;
 
 	return (
 		<>
 			<div
-				ref={containerRef}
 				className="grid gap-3"
-				style={{ gridTemplateColumns: `repeat(${perRow}, minmax(0, 1fr))` }}
+				style={{
+					gridTemplateColumns: `repeat(auto-fill, minmax(${minWidth}px, 1fr))`,
+				}}
 			>
 				{visible.map((g) => (
 					<GameCard

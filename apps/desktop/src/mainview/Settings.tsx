@@ -11,10 +11,10 @@ import {
 	type Stats,
 } from './lib/api';
 import {
-	CARDS_PER_ROW_MAX,
-	CARDS_PER_ROW_MIN,
+	CARD_WIDTH_MAX,
+	CARD_WIDTH_MIN,
 	getAlwaysShowRefreshIcons,
-	getCardsPerRow,
+	getCardMinWidth,
 	getRecentlyAddedMonths,
 	getSidebarVisibility,
 	getVibesCount,
@@ -24,7 +24,7 @@ import {
 	type SidebarKey,
 	type SidebarVisibility,
 	setAlwaysShowRefreshIcons,
-	setCardsPerRow,
+	setCardMinWidth,
 	setRecentlyAddedMonths,
 	setSidebarVisibility,
 	setVibesCount,
@@ -66,7 +66,7 @@ export function Settings({
 	const [recentMonths, setRecentMonths] = useState(getRecentlyAddedMonths());
 	const [vibesShown, setVibesShown] = useState(getVibesEnabled());
 	const [vibesCount, setVibesCountState] = useState(getVibesCount());
-	const [cardsPerRow, setCardsPerRowState] = useState(getCardsPerRow());
+	const [cardWidth, setCardWidthState] = useState(getCardMinWidth());
 	const [alwaysShowRefresh, setAlwaysShowRefreshState] = useState(
 		getAlwaysShowRefreshIcons(),
 	);
@@ -266,42 +266,30 @@ export function Settings({
 				</h2>
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
 					<label className="flex items-center gap-3 text-sm text-zinc-300">
-						<span className="flex-1">Cards per row</span>
+						<span className="flex-1">Card size</span>
 						<input
 							type="range"
-							min={CARDS_PER_ROW_MIN}
-							max={CARDS_PER_ROW_MAX}
-							value={cardsPerRow}
+							min={CARD_WIDTH_MIN}
+							max={CARD_WIDTH_MAX}
+							step={10}
+							value={cardWidth}
 							onChange={(e) => {
 								const n = Number.parseInt(e.target.value, 10);
 								if (!Number.isFinite(n)) return;
-								setCardsPerRowState(n);
-								setCardsPerRow(n);
+								setCardWidthState(n);
+								setCardMinWidth(n);
 							}}
 							className="w-48 accent-emerald-600"
 						/>
-						<input
-							type="number"
-							min={CARDS_PER_ROW_MIN}
-							max={CARDS_PER_ROW_MAX}
-							value={cardsPerRow}
-							onChange={(e) => {
-								const n = Number.parseInt(e.target.value, 10);
-								if (!Number.isFinite(n)) return;
-								const clamped = Math.min(
-									Math.max(n, CARDS_PER_ROW_MIN),
-									CARDS_PER_ROW_MAX,
-								);
-								setCardsPerRowState(clamped);
-								setCardsPerRow(clamped);
-							}}
-							className="w-16 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm tabular-nums focus:outline-none focus:border-zinc-600"
-						/>
+						<span className="w-16 text-sm tabular-nums text-right text-zinc-400">
+							{cardWidth} px
+						</span>
 					</label>
 				</div>
 				<p className="text-xs text-zinc-500 mt-2">
-					Default 7. Lower = larger images, higher = denser grid. Cards stretch
-					to fill the available width.
+					Bigger value = bigger cards (fewer per row). Columns adjust
+					automatically as the window resizes — narrow windows drop columns
+					instead of squishing cards.
 				</p>
 			</section>
 
@@ -1007,35 +995,15 @@ function EpicConnect() {
 				<div>
 					<div className="text-sm font-medium">Epic Games</div>
 					<p className="text-xs text-zinc-500 mt-1">
-						Epic doesn't publish a library API. We rely on{' '}
-						<code>legendary-gl</code>, a third-party CLI tool you have to
-						install on your host machine. Power-user only for now.
+						Epic doesn't publish a library API, so we can't add a
+						one-click flow yet. There's no in-app sync; it's on the
+						roadmap. If you really want Epic ownership matched right
+						now, you'd need to clone this project from source — which
+						isn't a realistic ask. Skip for now.
 					</p>
 				</div>
-				<span className="text-xs text-zinc-500">CLI required</span>
+				<span className="text-xs text-zinc-500">Not yet supported</span>
 			</div>
-			<details className="text-xs text-zinc-400">
-				<summary className="cursor-pointer hover:text-zinc-200">
-					Show me how
-				</summary>
-				<div className="mt-2 space-y-2 pl-2 border-l border-zinc-800">
-					<p>
-						Install Python, then{' '}
-						<code className="text-zinc-300">pip install --user legendary-gl</code>.
-					</p>
-					<p>
-						Run{' '}
-						<code className="text-zinc-300">legendary auth</code>
-						{' '}— it opens a browser for Epic SSO and asks you to paste a
-						code back.
-					</p>
-					<p>
-						From inside the project repo, run{' '}
-						<code className="text-zinc-300">bun run sync:epic</code> to
-						pull and match the library.
-					</p>
-				</div>
-			</details>
 		</div>
 	);
 }

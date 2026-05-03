@@ -8,7 +8,10 @@ const KEY = {
 	vibesEnabled: 'fglt.prefs.vibesEnabled.v1',
 	vibesCount: 'fglt.prefs.vibesCount.v1',
 	sidebar: 'fglt.prefs.sidebar.v1',
-	cardsPerRow: 'fglt.prefs.cardsPerRow.v1',
+	// Renamed from cardsPerRow — pref now controls min card width (px)
+	// instead of column count. CSS auto-fill computes the actual count
+	// per the available width.
+	cardMinWidth: 'fglt.prefs.cardMinWidth.v1',
 	alwaysShowRefreshIcons: 'fglt.prefs.alwaysShowRefreshIcons.v1',
 	recentlyViewed: 'fglt.recentlyViewed.v1',
 } as const;
@@ -29,9 +32,13 @@ export const VIBES_ENABLED_DEFAULT = true;
 export const VIBES_COUNT_DEFAULT = 12;
 export const VIBES_COUNT_MIN = 0;
 export const VIBES_COUNT_MAX = 60;
-export const CARDS_PER_ROW_DEFAULT = 7;
-export const CARDS_PER_ROW_MIN = 3;
-export const CARDS_PER_ROW_MAX = 14;
+// Card size, in pixels — used as the `minmax(N, 1fr)` floor in
+// the GameGrid CSS. Smaller value = more cards per row at any given
+// window width; larger = fewer, bigger cards. CSS auto-fill picks
+// the actual column count.
+export const CARD_WIDTH_DEFAULT = 180;
+export const CARD_WIDTH_MIN = 120;
+export const CARD_WIDTH_MAX = 320;
 
 export type SidebarKey =
 	| 'trending'
@@ -156,22 +163,22 @@ export function setSidebarVisibility(v: SidebarVisibility): void {
 	}
 }
 
-export function getCardsPerRow(): number {
+export function getCardMinWidth(): number {
 	try {
-		const raw = localStorage.getItem(KEY.cardsPerRow);
-		if (!raw) return CARDS_PER_ROW_DEFAULT;
+		const raw = localStorage.getItem(KEY.cardMinWidth);
+		if (!raw) return CARD_WIDTH_DEFAULT;
 		const n = Number.parseInt(raw, 10);
-		if (!Number.isFinite(n)) return CARDS_PER_ROW_DEFAULT;
-		return Math.min(Math.max(n, CARDS_PER_ROW_MIN), CARDS_PER_ROW_MAX);
+		if (!Number.isFinite(n)) return CARD_WIDTH_DEFAULT;
+		return Math.min(Math.max(n, CARD_WIDTH_MIN), CARD_WIDTH_MAX);
 	} catch {
-		return CARDS_PER_ROW_DEFAULT;
+		return CARD_WIDTH_DEFAULT;
 	}
 }
 
-export function setCardsPerRow(n: number): void {
+export function setCardMinWidth(n: number): void {
 	try {
-		localStorage.setItem(KEY.cardsPerRow, String(n));
-		window.dispatchEvent(new CustomEvent('fglt:prefs:cards-per-row'));
+		localStorage.setItem(KEY.cardMinWidth, String(n));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:card-width'));
 	} catch {
 		/* ignore */
 	}
