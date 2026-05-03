@@ -1,95 +1,48 @@
 # Find a Game Like That
 
-A self-hosted desktop app for searching and getting recommendations across
-your **Steam, Epic, and GOG** libraries — runs entirely on your own machine.
-
-Search by what a game *feels* like ("cozy puzzle", "3am dread"), not just
-its title. Get weekend-length picks, hidden gems, controversial favorites,
-and "more like this game I love" suggestions, all pulled from your own
-backlog.
-
-> **Status:** early days. Releases below — but expect rough edges.
-> Issues and PRs welcome at <https://github.com/KevinBatdorf/fglt>.
-
-<!-- Screenshot lands here once captured at apps/desktop/assets/screenshot.png -->
+Self-hosted desktop app for searching and getting recommendations across
+your Steam, Epic, and GOG libraries. Search by what a game *feels* like
+("cozy puzzle", "3am dread"), get weekend-length picks, hidden gems,
+"more like this" suggestions — all from your own backlog.
 
 ## Install
 
-Three steps. No clone, no `.env`, no terminal commands.
-
-1. **Install Docker Desktop.** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-   for Windows / macOS, or Docker Engine for Linux. Make sure it's
-   *running* — Docker Desktop doesn't auto-start by default.
-
-2. **Download the desktop app** for your OS from
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   and make sure it's running.
+2. Download the desktop app from
    [the latest release](https://github.com/KevinBatdorf/fglt/releases/latest)
-   and launch it. The app brings up its own Postgres + API + cron
-   workers via Docker on first launch — **first start takes ~3 min
-   one-time** while it builds the API image locally on your machine.
-   Subsequent launches are instant.
+   and launch it. First start takes ~3 min while it builds the backend
+   image; subsequent launches are instant.
+3. Add your Steam credentials when the app prompts:
+   - Steam API key — <https://steamcommunity.com/dev/apikey>
+   - Steam ID (64-bit) — <https://steamid.io/>
 
-3. **Add your Steam credentials.** Once the backend is up, the app
-   opens to **Settings → Configuration** and stays there until you
-   fill in:
-   - **Steam API key** — free at <https://steamcommunity.com/dev/apikey>
-   - **Steam ID (64-bit)** — paste your Steam profile URL into <https://steamid.io/>
-
-   Hit Save. The app unlocks within a second or two and starts syncing.
-
-## First run
-
-After the initial sync the **enricher** cron runs every 15 minutes and
-gradually fills in metadata, screenshots, reviews, and HowLongToBeat
-times. A 2,000-game library is fully enriched in a few hours.
-
-The home page becomes interesting once a few hundred games are enriched.
-Until then the app's a bit of a "dashboard waiting for paint" — that's
-expected.
+The enricher fills in metadata, screenshots, reviews, and HowLongToBeat
+times in the background. ~2,000 games is fully enriched in a few hours.
 
 ## Optional integrations
 
-Every key below is **optional** and lives in **Settings → Configuration**
-inside the desktop app. The library is fully usable without any of them.
+All optional, all set in **Settings → Configuration**:
 
-| Add this | What you get | How |
-|---|---|---|
-| **YouTube API key** | Walkthrough / let's-play videos on each game's detail page | <https://console.cloud.google.com> → enable "YouTube Data API v3" → paste the key into Settings |
-| **OpenCritic key** | Aggregated critic scores alongside Metacritic | Sign up free at <https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api>, copy your `X-RapidAPI-Key`, paste into Settings |
-| **Ollama** | Local AI for embeddings + "vibe" chip generation. Free, private. | Install [Ollama](https://ollama.com) and pull `nomic-embed-text` + a chat model like `qwen3:14b`. The default config talks to `http://host.docker.internal:11434`. |
-| **OpenAI / Groq / Together** | Cloud AI as an alternative | Set the AI base URL + API key + chat/embed model names in Settings |
-
-If you skip the AI integrations, search still works (keyword-only) and
-the "vibe" chips fall back to a static list. Skip YouTube if you don't
-want videos. Skip OpenCritic if Metacritic-only is enough — Metacritic
-comes free through Steam.
+- **AI (Ollama / OpenAI / Groq / Together)** — semantic search and
+  vibe-chip generation. Without it, search is keyword-only.
+- **YouTube API key** — gameplay videos on each game's detail page.
+- **OpenCritic** (RapidAPI) — critic scores alongside Metacritic.
 
 ## Multi-platform
 
-Steam is the canonical source. Epic and GOG titles are matched into Steam
-appids so a single game can show ownership across all your stores.
+Epic + GOG titles are matched into Steam appids. Steam is the source of
+truth; non-Steam-only games are skipped.
 
-- **Epic:** install [`legendary-gl`](https://github.com/derrod/legendary)
-  (`pip install --user legendary-gl`), run `legendary auth`, then
-  `bun run sync:epic` from the project root.
-- **GOG:** `bun run auth:gog` (browser sign-in, paste back the code), then
-  `bun run sync:gog`.
+- **Epic:** `pip install --user legendary-gl`, `legendary auth`,
+  `bun run sync:epic`.
+- **GOG:** `bun run auth:gog`, follow the OAuth flow, `bun run sync:gog`.
 
-itch.io is intentionally not supported — most itch titles aren't on Steam
-and the matching falls apart.
+## Hacking
 
-## Updates
-
-The app checks for new releases on launch and periodically. When one's
-ready, you'll see a banner asking to restart. No need to re-download.
-
-## Contributing / hacking
-
-Architecture, schema, API endpoints, and dev workflow live in
-[`CLAUDE.md`](./CLAUDE.md). Pull requests welcome.
+Architecture and dev workflow live in [`CLAUDE.md`](./CLAUDE.md).
 
 ## License
 
-This is vibe-coded AI slop I built for my own use and threw up here
-in case anyone else finds it useful. I genuinely don't know what the
-"right" license for that is — but if I have to pick one, **MIT**.
-Take it, fork it, ship it, ignore it, whatever.
+Vibe-coded AI slop I built for my own use and threw up here in case
+anyone else finds it useful. If I have to pick a license: **MIT**.
