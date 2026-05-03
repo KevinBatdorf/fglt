@@ -1076,6 +1076,14 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 			setShowCodeForm(false);
 			setMsg('Connected. Click "Sync Epic library now" to import.');
 			await refresh();
+		} catch (e) {
+			// Catch RPC-layer failures (bun side threw, bridge dropped,
+			// payload didn't serialise). Without this the UI just goes
+			// silent and the user has no idea what happened.
+			console.error('epicAuthExchange threw', e);
+			setMsg(
+				`RPC error: ${e instanceof Error ? e.message : String(e)}. Check the console for a stack trace.`,
+			);
 		} finally {
 			setBusy(null);
 		}
@@ -1094,6 +1102,9 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 				`Sync done — ${r.matched ?? 0} new matches, ${r.already_matched ?? 0} already in library, ${r.unmatched ?? 0} couldn't match a Steam game.`,
 			);
 			onSyncComplete();
+		} catch (e) {
+			console.error('epicSync threw', e);
+			setMsg(`RPC error: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			setBusy(null);
 		}
@@ -1111,6 +1122,9 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 			const r = await rpc.request.epicLogout({});
 			setMsg(r.ok ? 'Disconnected.' : `Failed: ${r.error ?? 'unknown'}`);
 			await refresh();
+		} catch (e) {
+			console.error('epicLogout threw', e);
+			setMsg(`RPC error: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			setBusy(null);
 		}

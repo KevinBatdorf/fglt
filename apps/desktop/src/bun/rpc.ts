@@ -310,9 +310,31 @@ export function defineFgltRpc() {
 				// ----- Epic Games (legendary CLI on the host) -----------
 				// Auth + library fetch shell out to legendary; library
 				// matching POSTs to the API for storesearch + DB upsert.
-				epicStatus: (): EpicStatus => readEpicStatus(),
-				epicAuthExchange: ({ code }) => epicAuthExchange(code),
-				epicLogout: () => epicLogout(),
+				epicStatus: (): EpicStatus => {
+					try {
+						return readEpicStatus();
+					} catch (e) {
+						console.error('[epic] status threw', e);
+						return { kind: 'not_installed' };
+					}
+				},
+				epicAuthExchange: ({ code }) => {
+					try {
+						return epicAuthExchange(code);
+					} catch (e) {
+						const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
+						console.error('[epic] authExchange threw', e);
+						return { ok: false, error: `bun-side exception: ${msg}` };
+					}
+				},
+				epicLogout: () => {
+					try {
+						return epicLogout();
+					} catch (e) {
+						console.error('[epic] logout threw', e);
+						return { ok: false, error: e instanceof Error ? e.message : String(e) };
+					}
+				},
 				epicSync: async () => {
 					const lib = epicLibrary();
 					if (!lib.ok || !lib.items) {
