@@ -1,8 +1,22 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
+import {
+	clearTokens as clearGogTokens,
+	exchangeCodeForTokens as exchangeGogCode,
+	getAuthUrl as getGogAuthUrl,
+	loadTokens as loadGogTokens,
+} from '../lib/gog';
+import { syncGogLibrary } from '../lib/gog-sync';
 import { fetchOwnedGames } from '../lib/steam';
 
-/** POST /sync — re-fetch the owned-games list from Steam Web API. */
+/**
+ * Library sync endpoints — Steam (built-in API), GOG (OAuth), Epic
+ * (deferred, requires the legendary CLI tool installed on the host).
+ *
+ * The GOG flow is what the desktop's Settings → "Connect GOG" wires
+ * to: GET the auth URL, open it in a browser, user pastes the code
+ * back, POST it here to exchange for tokens, then trigger the sync.
+ */
 export function syncRoutes(raw: postgres.Sql) {
 	const app = new Hono();
 
@@ -19,6 +33,64 @@ export function syncRoutes(raw: postgres.Sql) {
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'unknown';
 			return c.json({ error: 'sync failed', detail: msg }, 502);
+		}
+	});
+
+	// ----- GOG --------------------------------------------------------
+
+	/** Status of stored GOG tokens (for the UI to show Connected vs not). */
+	app.get('/sync/gog/status', async (c) => {
+		const t = await loadGogTokens().catch(() => null);
+		if (!t) return c.json({ authed: false });
+		return c.json({
+			authed: true,
+			user_id: t.user_id,
+			expires_at: new Date(t.expires_at).toISOString(),
+		});
+	});
+
+	/** OAuth URL the user opens in a browser to sign in. */
+	app.get('/sync/gog/auth-url', (c) => {
+		return c.json({ url: getGogAuthUrl() });
+	});
+
+	/**
+	 * Exchange the `code` query param the user copied out of the GOG
+	 * post-login redirect URL. Persists tokens server-side so subsequent
+	 * sync requests don't need re-auth.
+	 */
+	app.post('/sync/gog/auth-exchange', async (c) => {
+		const body = (await c.req.json().catch(() => ({}))) as { code?: unknown };
+		const code = typeof body.code === 'string' ? body.code.trim() : '';
+		if (!code) return c.json({ error: 'code is required' }, 400);
+		try {
+			const tokens = await exchangeGogCode(code);
+			return c.json({ ok: true, user_id: tokens.user_id });
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'unknown';
+			return c.json({ error: 'exchange failed', detail: msg }, 400);
+		}
+	});
+
+	/** Run the full GOG library sync. Requires prior /auth-exchange. */
+	app.post('/sync/gog', async (c) => {
+		try {
+			const result = await syncGogLibrary(raw, () => {});
+			return c.json({ ok: true, ...result });
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'unknown';
+			return c.json({ error: 'gog sync failed', detail: msg }, 502);
+		}
+	});
+
+	/** Forget the stored GOG tokens — does not touch the imported library. */
+	app.post('/sync/gog/disconnect', async (c) => {
+		try {
+			await clearGogTokens();
+			return c.json({ ok: true });
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'unknown';
+			return c.json({ error: 'disconnect failed', detail: msg }, 500);
 		}
 	});
 

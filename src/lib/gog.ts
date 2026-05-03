@@ -123,6 +123,17 @@ async function saveTokens(tokens: GogTokens): Promise<void> {
 	await writeFile(TOKEN_PATH, JSON.stringify(tokens, null, 2), 'utf8');
 }
 
+/**
+ * Forget the persisted tokens. Used by Settings → "Disconnect GOG" so
+ * the user can sign out without leaving auth tokens lying around.
+ * Subsequent calls to getValidTokens() will throw.
+ */
+export async function clearTokens(): Promise<void> {
+	if (!existsSync(TOKEN_PATH)) return;
+	const { unlink } = await import('node:fs/promises');
+	await unlink(TOKEN_PATH);
+}
+
 /** Get a valid access token, refreshing if needed. Throws if not yet authed. */
 export async function getValidTokens(): Promise<GogTokens> {
 	const existing = await loadTokens();

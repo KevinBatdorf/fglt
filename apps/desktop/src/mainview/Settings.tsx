@@ -359,24 +359,10 @@ export function Settings({
 
 			<section>
 				<h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2 font-semibold">
-					Re-auth
+					Other libraries
 				</h2>
-				<div className="space-y-2 text-sm text-zinc-300">
-					<p className="text-xs text-zinc-500">
-						Epic + GOG ownership comes from third-party auth flows that need a
-						browser. Run these in a terminal on the host machine:
-					</p>
-					<pre className="bg-zinc-950 border border-zinc-800 rounded-md p-3 text-[11px] text-zinc-300 overflow-x-auto">
-						{`# Epic
-legendary auth          # browser SSO; paste the auth code back
-bun run sync:epic       # rematch and upsert ownership
-
-# GOG
-bun run auth:gog                       # prints the OAuth URL
-bun run auth:gog <code-from-redirect>  # exchanges + saves tokens
-bun run sync:gog                       # rematch and upsert ownership`}
-					</pre>
-				</div>
+				<GogConnect onSyncComplete={onStatsRefresh} />
+				<EpicConnect />
 			</section>
 
 			<section>
@@ -759,6 +745,251 @@ function SystemStatusSection() {
  * three buttons fan out to dockerStart / dockerStop / dockerRebuild
  * RPCs.
  */
+/**
+ * GOG connect/sync flow. Three states:
+ *   1. Not connected      → "Open GOG sign-in" + paste-code field + Connect button
+ *   2. Connected          → user_id + "Sync now" / "Disconnect" buttons
+ *   3. Syncing            → busy spinner with progress message
+ *
+ * The OAuth flow doesn't have a redirect handler — GOG redirects to
+ * a `embed.gog.com/on_login_success?code=...` URL that the user copies
+ * out manually. Annoying but unavoidable without registering our own
+ * redirect URI with GOG (which requires their approval as a partner).
+ */
+function GogConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
+	type Status = { authed: false } | { authed: true; user_id: string };
+	const [status, setStatus] = useState<Status | null>(null);
+	const [code, setCode] = useState('');
+	const [busy, setBusy] = useState<null | 'connect' | 'sync' | 'disconnect'>(
+		null,
+	);
+	const [msg, setMsg] = useState<string | null>(null);
+	const [showCodeForm, setShowCodeForm] = useState(false);
+
+	async function refresh() {
+		try {
+			const s = await api.gogStatus();
+			setStatus(s);
+		} catch {
+			setStatus({ authed: false });
+		}
+	}
+
+	useEffect(() => {
+		void refresh();
+	}, []);
+
+	async function openSignIn() {
+		try {
+			const r = await api.gogAuthUrl();
+			await rpc.request.openUrl({ url: r.url });
+			setShowCodeForm(true);
+			setMsg(
+				'Sign in to GOG in the browser, then look at the URL bar — copy the code= value and paste it below.',
+			);
+		} catch (e) {
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	async function connect() {
+		// Accept either a bare code OR a full pasted redirect URL — extract
+		// the code= param if it looks like a URL.
+		let trimmed = code.trim();
+		try {
+			if (trimmed.startsWith('http')) {
+				const u = new URL(trimmed);
+				const c2 = u.searchParams.get('code');
+				if (c2) trimmed = c2;
+			}
+		} catch {
+			/* not a url, use as-is */
+		}
+		if (!trimmed) {
+			setMsg('Paste the code first.');
+			return;
+		}
+		setBusy('connect');
+		setMsg(null);
+		try {
+			const r = await api.gogAuthExchange(trimmed);
+			setCode('');
+			setShowCodeForm(false);
+			setMsg(`Connected as GOG user ${r.user_id}. Click "Sync now" to import.`);
+			await refresh();
+		} catch (e) {
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function sync() {
+		setBusy('sync');
+		setMsg('Syncing GOG library — can take a few minutes for big libraries…');
+		try {
+			const r = await api.gogSync();
+			setMsg(
+				`Sync done — ${r.matched} new matches, ${r.already_matched} already in library, ${r.unmatched} couldn't match a Steam game.`,
+			);
+			onSyncComplete();
+		} catch (e) {
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function disconnect() {
+		if (
+			!confirm(
+				'Disconnect GOG? Your imported games stay; only the auth tokens are forgotten. You can reconnect any time.',
+			)
+		)
+			return;
+		setBusy('disconnect');
+		try {
+			await api.gogDisconnect();
+			setMsg('Disconnected.');
+			await refresh();
+		} catch (e) {
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3 mb-3">
+			<div className="flex items-baseline justify-between gap-3 flex-wrap">
+				<div>
+					<div className="text-sm font-medium">GOG</div>
+					<p className="text-xs text-zinc-500 mt-1">
+						Imports your owned GOG games and matches them to Steam
+						appids so a single game can show ownership across stores.
+						GOG-only titles are skipped.
+					</p>
+				</div>
+				<div className="text-xs tabular-nums">
+					{status === null ? (
+						<span className="text-zinc-500">Checking…</span>
+					) : status.authed ? (
+						<span className="text-emerald-300">
+							Connected as {status.user_id}
+						</span>
+					) : (
+						<span className="text-zinc-500">Not connected</span>
+					)}
+				</div>
+			</div>
+			{status?.authed ? (
+				<div className="flex flex-wrap gap-2">
+					<button
+						type="button"
+						onClick={() => void sync()}
+						disabled={busy !== null}
+						className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+					>
+						{busy === 'sync' ? 'Syncing…' : 'Sync GOG library now'}
+					</button>
+					<button
+						type="button"
+						onClick={() => void disconnect()}
+						disabled={busy !== null}
+						className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-40"
+					>
+						{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+					</button>
+				</div>
+			) : (
+				<div className="space-y-2">
+					{!showCodeForm && (
+						<button
+							type="button"
+							onClick={() => void openSignIn()}
+							className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+						>
+							Open GOG sign-in
+						</button>
+					)}
+					{showCodeForm && (
+						<div className="flex gap-2">
+							<input
+								type="text"
+								value={code}
+								onChange={(e) => setCode(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') void connect();
+								}}
+								placeholder="Paste code or full redirect URL"
+								className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-zinc-600"
+							/>
+							<button
+								type="button"
+								onClick={() => void connect()}
+								disabled={busy !== null || !code.trim()}
+								className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+							>
+								{busy === 'connect' ? 'Connecting…' : 'Connect'}
+							</button>
+						</div>
+					)}
+				</div>
+			)}
+			{msg && (
+				<div className="text-xs text-zinc-400 break-words">{msg}</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Epic — currently NOT a one-click flow. Epic doesn't expose a public
+ * library API; the third-party tool we use (`legendary-gl`) is a
+ * Python CLI that needs to be installed on the host. Until we either
+ * bundle legendary or build our own scraper, this section is just
+ * honest copy explaining the situation.
+ */
+function EpicConnect() {
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-2">
+			<div className="flex items-baseline justify-between gap-3 flex-wrap">
+				<div>
+					<div className="text-sm font-medium">Epic Games</div>
+					<p className="text-xs text-zinc-500 mt-1">
+						Epic doesn't publish a library API. We rely on{' '}
+						<code>legendary-gl</code>, a third-party CLI tool you have to
+						install on your host machine. Power-user only for now.
+					</p>
+				</div>
+				<span className="text-xs text-zinc-500">CLI required</span>
+			</div>
+			<details className="text-xs text-zinc-400">
+				<summary className="cursor-pointer hover:text-zinc-200">
+					Show me how
+				</summary>
+				<div className="mt-2 space-y-2 pl-2 border-l border-zinc-800">
+					<p>
+						Install Python, then{' '}
+						<code className="text-zinc-300">pip install --user legendary-gl</code>.
+					</p>
+					<p>
+						Run{' '}
+						<code className="text-zinc-300">legendary auth</code>
+						{' '}— it opens a browser for Epic SSO and asks you to paste a
+						code back.
+					</p>
+					<p>
+						From inside the project repo, run{' '}
+						<code className="text-zinc-300">bun run sync:epic</code> to
+						pull and match the library.
+					</p>
+				</div>
+			</details>
+		</div>
+	);
+}
+
 function BackendSection({ docker }: { docker: DockerStatus | null }) {
 	const [busy, setBusy] = useState<null | 'start' | 'stop' | 'rebuild'>(null);
 	const [msg, setMsg] = useState<string | null>(null);
