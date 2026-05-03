@@ -61,6 +61,11 @@ services:
     environment:
       DATABASE_URL: 'postgres://steam:steam@fglt-postgres:5432/steam'
       PORT: '3110'
+      # legendary (Epic Games CLI) reads/writes tokens at
+      # $XDG_CONFIG_HOME/legendary/user.json. Pointing it at /app/data
+      # parks tokens on the persistent volume so they survive
+      # rebuilds.
+      XDG_CONFIG_HOME: '/app/data'
       # All other keys (STEAM_API_KEY, AI_*, YOUTUBE_API_KEY, etc.) are
       # left UNSET on purpose. The desktop UI writes them to Postgres,
       # `getConfig()` reads from there, and a process restart is not

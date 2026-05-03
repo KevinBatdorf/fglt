@@ -405,6 +405,32 @@ export const api = {
 		}>('/sync/gog', 'POST'),
 	gogDisconnect: () =>
 		jsonCall<{ ok: boolean }>('/sync/gog/disconnect', 'POST'),
+	// Epic uses the same shape as GOG. Tokens + legendary CLI live in
+	// the API container — the desktop's bun side isn't involved.
+	epicStatus: (signal?: AbortSignal) =>
+		get<
+			| { kind: 'not_installed' }
+			| { kind: 'not_authed' }
+			| { kind: 'authed'; account?: string }
+		>('/sync/epic/status', signal),
+	epicAuthUrl: (signal?: AbortSignal) =>
+		get<{ url: string }>('/sync/epic/auth-url', signal),
+	epicAuthExchange: (code: string) =>
+		jsonCall<{ ok: boolean; error?: string }>(
+			'/sync/epic/auth-exchange',
+			'POST',
+			{ code },
+		),
+	epicSync: () =>
+		jsonCall<{
+			ok: boolean;
+			total: number;
+			matched: number;
+			already_matched: number;
+			unmatched: number;
+		}>('/sync/epic', 'POST'),
+	epicDisconnect: () =>
+		jsonCall<{ ok: boolean }>('/sync/epic/disconnect', 'POST'),
 	lists: (signal?: AbortSignal) =>
 		get<{ lists: ListSummary[] }>('/lists', signal),
 	listGames: (slug: string, signal?: AbortSignal) =>

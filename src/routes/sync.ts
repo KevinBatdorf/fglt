@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
 import type postgres from 'postgres';
+import {
+	EPIC_AUTH_URL,
+	epicAuthExchange,
+	epicLibrary,
+	epicLogout,
+	epicStatus,
+} from '../lib/epic';
 import { type EpicGameInput, importEpicLibrary } from '../lib/epic-import';
 import {
 	clearTokens as clearGogTokens,
@@ -97,15 +104,51 @@ export function syncRoutes(raw: postgres.Sql) {
 
 	// ----- Epic --------------------------------------------------------
 	//
-	// Auth + library fetch happen on the desktop's host side (the bun
-	// process shells to legendary-gl, which the user installed locally).
-	// The API just receives the parsed library JSON and runs the same
-	// matching pipeline GOG uses.
+	// legendary-gl runs INSIDE the API container (installed via the
+	// Dockerfile). User clicks "Open Epic sign-in", logs in via the
+	// real browser, copies the auth code back, and we exchange it
+	// server-side. Tokens land at $XDG_CONFIG_HOME/legendary/user.json
+	// which the consumer compose maps onto a persistent volume.
+
+	app.get('/sync/epic/status', (c) => c.json(epicStatus()));
+
+	app.get('/sync/epic/auth-url', (c) => c.json({ url: EPIC_AUTH_URL }));
+
+	app.post('/sync/epic/auth-exchange', async (c) => {
+		const body = (await c.req.json().catch(() => ({}))) as { code?: unknown };
+		const code = typeof body.code === 'string' ? body.code.trim() : '';
+		if (!code) return c.json({ error: 'code is required' }, 400);
+		// Tolerate the user pasting the whole JSON snippet from the
+		// post-login landing page rather than just the bare code.
+		const m = code.match(/"authorizationCode"\s*:\s*"([^"]+)"/);
+		const real = m ? m[1] : code;
+		const r = epicAuthExchange(real);
+		return c.json(r, r.ok ? 200 : 400);
+	});
+
+	app.post('/sync/epic', async (c) => {
+		const lib = epicLibrary();
+		if (!lib.ok || !lib.items) {
+			return c.json({ error: lib.error ?? 'library fetch failed' }, 502);
+		}
+		try {
+			const result = await importEpicLibrary(raw, lib.items, () => {});
+			return c.json({ ok: true, ...result });
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'unknown';
+			return c.json({ error: 'epic import failed', detail: msg }, 502);
+		}
+	});
+
+	app.post('/sync/epic/disconnect', (c) => {
+		const r = epicLogout();
+		return c.json(r, r.ok ? 200 : 500);
+	});
 
 	/**
-	 * Body: { games: EpicGameInput[] } — the list legendary returned.
-	 * We dedupe via the existing platform_ownership unique key so re-runs
-	 * are cheap.
+	 * Legacy endpoint used by the old desktop-side sync flow (shelled
+	 * legendary on host, POSTed library here). Kept for backward
+	 * compatibility — `POST /sync/epic` is the new path.
 	 */
 	app.post('/sync/epic/import', async (c) => {
 		const body = (await c.req.json().catch(() => ({}))) as {

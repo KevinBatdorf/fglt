@@ -59,18 +59,6 @@ interface FgltRpcShape {
 		dockerRebuild: (
 			params: FgltRPC['bun']['requests']['dockerRebuild']['params'],
 		) => Promise<FgltRPC['bun']['requests']['dockerRebuild']['response']>;
-		epicStatus: (
-			params: FgltRPC['bun']['requests']['epicStatus']['params'],
-		) => Promise<FgltRPC['bun']['requests']['epicStatus']['response']>;
-		epicAuthExchange: (
-			params: FgltRPC['bun']['requests']['epicAuthExchange']['params'],
-		) => Promise<FgltRPC['bun']['requests']['epicAuthExchange']['response']>;
-		epicSync: (
-			params: FgltRPC['bun']['requests']['epicSync']['params'],
-		) => Promise<FgltRPC['bun']['requests']['epicSync']['response']>;
-		epicLogout: (
-			params: FgltRPC['bun']['requests']['epicLogout']['params'],
-		) => Promise<FgltRPC['bun']['requests']['epicLogout']['response']>;
 	};
 	send: Record<string, never>;
 }
@@ -144,14 +132,6 @@ function createStubRpc(): FgltRpcShape {
 			dockerStart: () => Promise.resolve({ ok: false, error: 'browser stub' }),
 			dockerStop: () => Promise.resolve({ ok: false, error: 'browser stub' }),
 			dockerRebuild: () =>
-				Promise.resolve({ ok: false, error: 'browser stub' }),
-			epicStatus: () =>
-				Promise.resolve({ kind: 'not_installed' as const }),
-			epicAuthExchange: () =>
-				Promise.resolve({ ok: false, error: 'browser stub' }),
-			epicSync: () =>
-				Promise.resolve({ ok: false, error: 'browser stub' }),
-			epicLogout: () =>
 				Promise.resolve({ ok: false, error: 'browser stub' }),
 		},
 		send: {},

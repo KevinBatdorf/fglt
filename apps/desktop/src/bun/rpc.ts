@@ -16,7 +16,6 @@ import {
 } from 'electrobun/bun';
 import type {
 	DockerStatus,
-	EpicStatus,
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
@@ -29,12 +28,6 @@ import {
 	startBackend,
 	stopBackend,
 } from './docker';
-import {
-	epicAuthExchange,
-	epicLibrary,
-	epicLogout,
-	epicStatus as readEpicStatus,
-} from './epic';
 import { epicLaunchUri, getEpicInstalled } from './launchers/epic';
 import { getGogInstalled, gogLaunchUri } from './launchers/gog';
 import {
@@ -307,65 +300,9 @@ export function defineFgltRpc() {
 				// "Update backend" button's behaviour.
 				dockerRebuild: () => rebuildBackend(),
 
-				// ----- Epic Games (legendary CLI on the host) -----------
-				// Auth + library fetch shell out to legendary; library
-				// matching POSTs to the API for storesearch + DB upsert.
-				epicStatus: (): EpicStatus => {
-					try {
-						return readEpicStatus();
-					} catch (e) {
-						console.error('[epic] status threw', e);
-						return { kind: 'not_installed' };
-					}
-				},
-				epicAuthExchange: ({ code }) => {
-					try {
-						return epicAuthExchange(code);
-					} catch (e) {
-						const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
-						console.error('[epic] authExchange threw', e);
-						return { ok: false, error: `bun-side exception: ${msg}` };
-					}
-				},
-				epicLogout: () => {
-					try {
-						return epicLogout();
-					} catch (e) {
-						console.error('[epic] logout threw', e);
-						return { ok: false, error: e instanceof Error ? e.message : String(e) };
-					}
-				},
-				epicSync: async () => {
-					const lib = epicLibrary();
-					if (!lib.ok || !lib.items) {
-						return { ok: false, error: lib.error ?? 'library fetch failed' };
-					}
-					try {
-						const res = await fetch(`${API_BASE}/sync/epic/import`, {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ games: lib.items }),
-						});
-						if (!res.ok) {
-							return {
-								ok: false,
-								error: `API ${res.status}: ${await res.text()}`,
-							};
-						}
-						return (await res.json()) as {
-							ok: boolean;
-							total?: number;
-							matched?: number;
-							already_matched?: number;
-							unmatched?: number;
-						};
-					} catch (e) {
-						return {
-							ok: false,
-							error: e instanceof Error ? e.message : String(e),
-						};
-					}
-				},
+				// Epic Games is now driven entirely by API endpoints —
+				// legendary lives inside the backend container (see
+				// Dockerfile). No bun-side handlers needed.
 			},
 			messages: {},
 		},

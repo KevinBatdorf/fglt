@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DockerStatus, EpicStatus, UpdaterStatus } from '../shared/types';
+import type { DockerStatus, UpdaterStatus } from '../shared/types';
+
+type EpicStatus =
+	| { kind: 'not_installed' }
+	| { kind: 'not_authed' }
+	| { kind: 'authed'; account?: string };
 import { GameImage } from './GameImage';
 import { Select } from './Select';
 import {
@@ -1034,7 +1039,7 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 
 	async function refresh() {
 		try {
-			const s = await rpc.request.epicStatus({});
+			const s = await api.epicStatus();
 			setStatus(s);
 		} catch {
 			setStatus({ kind: 'not_installed' });
@@ -1046,7 +1051,8 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 	}, []);
 
 	async function openSignIn() {
-		await rpc.request.openUrl({ url: 'https://legendary.gl/epiclogin' });
+		const r = await api.epicAuthUrl();
+		await rpc.request.openUrl({ url: r.url });
 		setShowCodeForm(true);
 		setMsg(
 			'Sign in to Epic in the browser. After login you\'ll see a JSON page — copy the long "authorizationCode" value and paste it below within a few minutes (codes expire fast).',
@@ -1054,20 +1060,15 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 	}
 
 	async function connect() {
-		// Tolerate "authorizationCode": "abc..." JSON snippets pasted
-		// whole — extract the value with a simple regex if it looks like
-		// the JSON page rather than the bare code.
-		let trimmed = code.trim();
-		const m = trimmed.match(/"authorizationCode"\s*:\s*"([^"]+)"/);
-		if (m) trimmed = m[1];
+		const trimmed = code.trim();
 		if (!trimmed) {
 			setMsg('Paste the authorization code first.');
 			return;
 		}
 		setBusy('connect');
-		setMsg(null);
+		setMsg('Connecting…');
 		try {
-			const r = await rpc.request.epicAuthExchange({ code: trimmed });
+			const r = await api.epicAuthExchange(trimmed);
 			if (!r.ok) {
 				setMsg(`Failed: ${r.error ?? 'unknown'}`);
 				return;
@@ -1077,13 +1078,7 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 			setMsg('Connected. Click "Sync Epic library now" to import.');
 			await refresh();
 		} catch (e) {
-			// Catch RPC-layer failures (bun side threw, bridge dropped,
-			// payload didn't serialise). Without this the UI just goes
-			// silent and the user has no idea what happened.
-			console.error('epicAuthExchange threw', e);
-			setMsg(
-				`RPC error: ${e instanceof Error ? e.message : String(e)}. Check the console for a stack trace.`,
-			);
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			setBusy(null);
 		}
@@ -1093,18 +1088,13 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 		setBusy('sync');
 		setMsg('Syncing Epic library — this can take a few minutes…');
 		try {
-			const r = await rpc.request.epicSync({});
-			if (!r.ok) {
-				setMsg(`Failed: ${r.error ?? 'unknown'}`);
-				return;
-			}
+			const r = await api.epicSync();
 			setMsg(
-				`Sync done — ${r.matched ?? 0} new matches, ${r.already_matched ?? 0} already in library, ${r.unmatched ?? 0} couldn't match a Steam game.`,
+				`Sync done — ${r.matched} new matches, ${r.already_matched} already in library, ${r.unmatched} couldn't match a Steam game.`,
 			);
 			onSyncComplete();
 		} catch (e) {
-			console.error('epicSync threw', e);
-			setMsg(`RPC error: ${e instanceof Error ? e.message : String(e)}`);
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			setBusy(null);
 		}
@@ -1113,18 +1103,17 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 	async function disconnect() {
 		if (
 			!confirm(
-				'Disconnect Epic? Your imported games stay; only the local Epic tokens are forgotten.',
+				'Disconnect Epic? Your imported games stay; only the auth tokens are forgotten.',
 			)
 		)
 			return;
 		setBusy('disconnect');
 		try {
-			const r = await rpc.request.epicLogout({});
-			setMsg(r.ok ? 'Disconnected.' : `Failed: ${r.error ?? 'unknown'}`);
+			await api.epicDisconnect();
+			setMsg('Disconnected.');
 			await refresh();
 		} catch (e) {
-			console.error('epicLogout threw', e);
-			setMsg(`RPC error: ${e instanceof Error ? e.message : String(e)}`);
+			setMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			setBusy(null);
 		}
@@ -1162,34 +1151,13 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 			</div>
 
 			{kind === 'not_installed' && (
-				<div className="space-y-2 text-xs text-zinc-400">
+				<div className="space-y-2 text-xs text-amber-300">
 					<p>
-						Install the legendary CLI (one-time, ~5 min):
+						The legendary CLI isn't reachable from inside the backend
+						container — this shouldn't happen on a normal install. Try
+						"Update backend" in Settings → Backend to rebuild the image,
+						then come back here.
 					</p>
-					<ol className="list-decimal pl-5 space-y-1">
-						<li>
-							Install Python 3 if you don't have it (
-							<button
-								type="button"
-								onClick={() =>
-									rpc.request.openUrl({ url: 'https://www.python.org/downloads/' })
-								}
-								className="underline hover:no-underline text-zinc-300"
-							>
-								python.org/downloads
-							</button>
-							).
-						</li>
-						<li>
-							In a terminal:{' '}
-							<code className="text-zinc-300">
-								pip install --user legendary-gl
-							</code>
-						</li>
-						<li>
-							Restart this app, then come back here.
-						</li>
-					</ol>
 					<button
 						type="button"
 						onClick={() => void refresh()}
