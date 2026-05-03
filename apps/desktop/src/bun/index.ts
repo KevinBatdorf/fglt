@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { BrowserWindow, Updater } from 'electrobun/bun';
 import { dockerStatus, rebuildBackend, startBackend } from './docker';
 import {
-	defineSegRpc,
+	defineFgltRpc,
 	registerMainWindow,
 	setPrefsPath,
 	startUpdaterPolling,
@@ -19,7 +19,7 @@ interface WindowPrefs {
 	height: number;
 }
 
-const PREFS_PATH = join(homedir(), '.seg-window.json');
+const PREFS_PATH = join(homedir(), '.fglt-window.json');
 // Tracks the app version we last booted with. When the binary updates
 // and relaunches, we compare against this to decide whether to fire
 // `docker compose pull` (so backend images stay roughly in sync with
@@ -72,7 +72,7 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 const url = await getMainViewUrl();
-const rpc = defineSegRpc();
+const rpc = defineFgltRpc();
 const savedFrame = await readWindowPrefs();
 
 const mainWindow = new BrowserWindow({

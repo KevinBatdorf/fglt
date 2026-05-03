@@ -33,7 +33,7 @@ import { SetupGuide } from './SetupGuide';
 import { Sidebar, type View } from './Sidebar';
 import { TitleBar } from './TitleBar';
 
-const RECENT_KEY = 'seg.recentSearches.v1';
+const RECENT_KEY = 'fglt.recentSearches.v1';
 const RECENT_MAX = 8;
 
 function readRecent(): string[] {
@@ -101,7 +101,7 @@ function App() {
 			.catch(console.error);
 	}, [refreshStats]);
 
-	// Poll /health every 30s + on every `seg:config:changed` event so a Save
+	// Poll /health every 30s + on every `fglt:config:changed` event so a Save
 	// in Settings releases the lockout instantly instead of after the next
 	// scheduled poll. We also reach for it on mount so the very first paint
 	// already knows whether to lock.
@@ -127,11 +127,11 @@ function App() {
 		void poll();
 		const t = setInterval(() => void poll(), 30_000);
 		const onConfigChanged = () => void poll();
-		window.addEventListener('seg:config:changed', onConfigChanged);
+		window.addEventListener('fglt:config:changed', onConfigChanged);
 		return () => {
 			cancelled = true;
 			clearInterval(t);
-			window.removeEventListener('seg:config:changed', onConfigChanged);
+			window.removeEventListener('fglt:config:changed', onConfigChanged);
 		};
 	}, []);
 
@@ -318,7 +318,10 @@ function App() {
 		() => deriveTitleSuffix(view, lists, detailGameName, query),
 		[view, lists, detailGameName, query],
 	);
-	const windowTitle = titleSuffix ? `SEG · ${titleSuffix}` : 'SEG';
+	// OS window title. Suffix when we have one; just the app name otherwise.
+	const windowTitle = titleSuffix
+		? titleSuffix
+		: 'Find a Game Like That';
 	const showHeader =
 		view.kind !== 'detail' &&
 		view.kind !== 'settings' &&
@@ -463,8 +466,8 @@ function SearchBar({
 				/* leave disabled */
 			});
 		const handler = () => setVibesShown(getVibesEnabled());
-		window.addEventListener('seg:prefs:vibes-toggled', handler);
-		return () => window.removeEventListener('seg:prefs:vibes-toggled', handler);
+		window.addEventListener('fglt:prefs:vibes-toggled', handler);
+		return () => window.removeEventListener('fglt:prefs:vibes-toggled', handler);
 	}, []);
 
 	async function handleRegenerate() {
@@ -472,7 +475,7 @@ function SearchBar({
 		try {
 			await api.regenerateVibes();
 			// Bump VibeRow so it refetches; cheap signal via window event.
-			window.dispatchEvent(new CustomEvent('seg:vibes:regenerated'));
+			window.dispatchEvent(new CustomEvent('fglt:vibes:regenerated'));
 			forceVibesUpdate((n) => n + 1);
 		} catch (e) {
 			console.error('vibes regenerate failed:', e);
@@ -575,11 +578,11 @@ function VibeRow({
 			setShown(getVibesEnabled());
 			setCount(getVibesCount());
 		};
-		window.addEventListener('seg:vibes:regenerated', onRegen);
-		window.addEventListener('seg:prefs:vibes-toggled', onToggle);
+		window.addEventListener('fglt:vibes:regenerated', onRegen);
+		window.addEventListener('fglt:prefs:vibes-toggled', onToggle);
 		return () => {
-			window.removeEventListener('seg:vibes:regenerated', onRegen);
-			window.removeEventListener('seg:prefs:vibes-toggled', onToggle);
+			window.removeEventListener('fglt:vibes:regenerated', onRegen);
+			window.removeEventListener('fglt:prefs:vibes-toggled', onToggle);
 		};
 	}, [reload]);
 
@@ -1050,9 +1053,9 @@ function RecentlyViewedView({
 
 	useEffect(() => {
 		const onChange = () => setEntries(getRecentlyViewed());
-		window.addEventListener('seg:recently-viewed:changed', onChange);
+		window.addEventListener('fglt:recently-viewed:changed', onChange);
 		return () =>
-			window.removeEventListener('seg:recently-viewed:changed', onChange);
+			window.removeEventListener('fglt:recently-viewed:changed', onChange);
 	}, []);
 
 	useEffect(() => {

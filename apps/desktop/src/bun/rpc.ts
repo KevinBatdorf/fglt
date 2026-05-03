@@ -19,7 +19,7 @@ import type {
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
-	SegRPC,
+	FgltRPC,
 	UpdaterStatus,
 } from '../shared/types';
 import {
@@ -39,14 +39,14 @@ import {
 function mainWindow() {
 	// We only ever create one window. BrowserWindowMap isn't exported,
 	// so we cache the first instance we see.
-	return (globalThis as unknown as { __segMainWindow?: BrowserWindow })
-		.__segMainWindow;
+	return (globalThis as unknown as { __fgltMainWindow?: BrowserWindow })
+		.__fgltMainWindow;
 }
 
 export function registerMainWindow(win: BrowserWindow): void {
 	(
-		globalThis as unknown as { __segMainWindow?: BrowserWindow }
-	).__segMainWindow = win;
+		globalThis as unknown as { __fgltMainWindow?: BrowserWindow }
+	).__fgltMainWindow = win;
 }
 
 // ----- Auto-updater state ------------------------------------------------
@@ -134,7 +134,7 @@ function schedulePersistFrame() {
 	}, 250);
 }
 
-const API_BASE = process.env.SEG_API_BASE ?? 'http://localhost:3110';
+const API_BASE = process.env.FGLT_API_BASE ?? 'http://localhost:3110';
 
 function readInstalledIndex(): InstalledIndex {
 	return {
@@ -144,8 +144,8 @@ function readInstalledIndex(): InstalledIndex {
 	};
 }
 
-export function defineSegRpc() {
-	return BrowserView.defineRPC<SegRPC>({
+export function defineFgltRpc() {
+	return BrowserView.defineRPC<FgltRPC>({
 		handlers: {
 			requests: {
 				launch: ({ platform, externalId, appid }): LaunchResult => {

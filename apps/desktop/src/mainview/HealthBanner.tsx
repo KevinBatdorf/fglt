@@ -28,7 +28,7 @@ import { rpc } from './lib/rpc';
  */
 
 const POLL_MS = 30_000;
-const DISMISS_KEY = 'seg.health.dismissedKey';
+const DISMISS_KEY = 'fglt.health.dismissedKey';
 
 type BannerState =
 	| { kind: 'ok' }

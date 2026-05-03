@@ -70,7 +70,7 @@ export interface UpdaterStatus {
 	checking: boolean;
 }
 
-export type SegRPC = {
+export type FgltRPC = {
 	bun: RPCSchema<{
 		requests: {
 			launch: {

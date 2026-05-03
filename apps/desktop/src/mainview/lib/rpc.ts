@@ -7,58 +7,58 @@
  * so the UI still renders.
  */
 import { Electroview } from 'electrobun/view';
-import type { SegRPC } from '../../shared/types';
+import type { FgltRPC } from '../../shared/types';
 
-interface SegRpcShape {
+interface FgltRpcShape {
 	request: {
 		launch: (
-			params: SegRPC['bun']['requests']['launch']['params'],
-		) => Promise<SegRPC['bun']['requests']['launch']['response']>;
+			params: FgltRPC['bun']['requests']['launch']['params'],
+		) => Promise<FgltRPC['bun']['requests']['launch']['response']>;
 		getInstalledIndex: (
-			params: SegRPC['bun']['requests']['getInstalledIndex']['params'],
-		) => Promise<SegRPC['bun']['requests']['getInstalledIndex']['response']>;
+			params: FgltRPC['bun']['requests']['getInstalledIndex']['params'],
+		) => Promise<FgltRPC['bun']['requests']['getInstalledIndex']['response']>;
 		refreshGame: (
-			params: SegRPC['bun']['requests']['refreshGame']['params'],
-		) => Promise<SegRPC['bun']['requests']['refreshGame']['response']>;
+			params: FgltRPC['bun']['requests']['refreshGame']['params'],
+		) => Promise<FgltRPC['bun']['requests']['refreshGame']['response']>;
 		openUrl: (
-			params: SegRPC['bun']['requests']['openUrl']['params'],
-		) => Promise<SegRPC['bun']['requests']['openUrl']['response']>;
+			params: FgltRPC['bun']['requests']['openUrl']['params'],
+		) => Promise<FgltRPC['bun']['requests']['openUrl']['response']>;
 		windowAction: (
-			params: SegRPC['bun']['requests']['windowAction']['params'],
-		) => Promise<SegRPC['bun']['requests']['windowAction']['response']>;
+			params: FgltRPC['bun']['requests']['windowAction']['params'],
+		) => Promise<FgltRPC['bun']['requests']['windowAction']['response']>;
 		windowGetFrame: (
-			params: SegRPC['bun']['requests']['windowGetFrame']['params'],
-		) => Promise<SegRPC['bun']['requests']['windowGetFrame']['response']>;
+			params: FgltRPC['bun']['requests']['windowGetFrame']['params'],
+		) => Promise<FgltRPC['bun']['requests']['windowGetFrame']['response']>;
 		windowSetPosition: (
-			params: SegRPC['bun']['requests']['windowSetPosition']['params'],
-		) => Promise<SegRPC['bun']['requests']['windowSetPosition']['response']>;
+			params: FgltRPC['bun']['requests']['windowSetPosition']['params'],
+		) => Promise<FgltRPC['bun']['requests']['windowSetPosition']['response']>;
 		windowSetFrame: (
-			params: SegRPC['bun']['requests']['windowSetFrame']['params'],
-		) => Promise<SegRPC['bun']['requests']['windowSetFrame']['response']>;
+			params: FgltRPC['bun']['requests']['windowSetFrame']['params'],
+		) => Promise<FgltRPC['bun']['requests']['windowSetFrame']['response']>;
 		windowSetTitle: (
-			params: SegRPC['bun']['requests']['windowSetTitle']['params'],
-		) => Promise<SegRPC['bun']['requests']['windowSetTitle']['response']>;
+			params: FgltRPC['bun']['requests']['windowSetTitle']['params'],
+		) => Promise<FgltRPC['bun']['requests']['windowSetTitle']['response']>;
 		updaterStatus: (
-			params: SegRPC['bun']['requests']['updaterStatus']['params'],
-		) => Promise<SegRPC['bun']['requests']['updaterStatus']['response']>;
+			params: FgltRPC['bun']['requests']['updaterStatus']['params'],
+		) => Promise<FgltRPC['bun']['requests']['updaterStatus']['response']>;
 		updaterCheckNow: (
-			params: SegRPC['bun']['requests']['updaterCheckNow']['params'],
-		) => Promise<SegRPC['bun']['requests']['updaterCheckNow']['response']>;
+			params: FgltRPC['bun']['requests']['updaterCheckNow']['params'],
+		) => Promise<FgltRPC['bun']['requests']['updaterCheckNow']['response']>;
 		updaterApply: (
-			params: SegRPC['bun']['requests']['updaterApply']['params'],
-		) => Promise<SegRPC['bun']['requests']['updaterApply']['response']>;
+			params: FgltRPC['bun']['requests']['updaterApply']['params'],
+		) => Promise<FgltRPC['bun']['requests']['updaterApply']['response']>;
 		dockerStatus: (
-			params: SegRPC['bun']['requests']['dockerStatus']['params'],
-		) => Promise<SegRPC['bun']['requests']['dockerStatus']['response']>;
+			params: FgltRPC['bun']['requests']['dockerStatus']['params'],
+		) => Promise<FgltRPC['bun']['requests']['dockerStatus']['response']>;
 		dockerStart: (
-			params: SegRPC['bun']['requests']['dockerStart']['params'],
-		) => Promise<SegRPC['bun']['requests']['dockerStart']['response']>;
+			params: FgltRPC['bun']['requests']['dockerStart']['params'],
+		) => Promise<FgltRPC['bun']['requests']['dockerStart']['response']>;
 		dockerStop: (
-			params: SegRPC['bun']['requests']['dockerStop']['params'],
-		) => Promise<SegRPC['bun']['requests']['dockerStop']['response']>;
+			params: FgltRPC['bun']['requests']['dockerStop']['params'],
+		) => Promise<FgltRPC['bun']['requests']['dockerStop']['response']>;
 		dockerRebuild: (
-			params: SegRPC['bun']['requests']['dockerRebuild']['params'],
-		) => Promise<SegRPC['bun']['requests']['dockerRebuild']['response']>;
+			params: FgltRPC['bun']['requests']['dockerRebuild']['params'],
+		) => Promise<FgltRPC['bun']['requests']['dockerRebuild']['response']>;
 	};
 	send: Record<string, never>;
 }
@@ -70,7 +70,7 @@ function inElectrobun(): boolean {
 	return typeof w.__electrobunWebviewId !== 'undefined';
 }
 
-function createStubRpc(): SegRpcShape {
+function createStubRpc(): FgltRpcShape {
 	const warn = (name: string) =>
 		console.warn(`[rpc-stub] ${name} called outside Electrobun (no-op)`);
 	return {
@@ -138,15 +138,15 @@ function createStubRpc(): SegRpcShape {
 	};
 }
 
-let rpcImpl: SegRpcShape;
+let rpcImpl: FgltRpcShape;
 try {
 	if (!inElectrobun()) throw new Error('Not in Electrobun host');
-	const electroviewRpc = Electroview.defineRPC<SegRPC>({
+	const electroviewRpc = Electroview.defineRPC<FgltRPC>({
 		handlers: { requests: {}, messages: {} },
 	});
 	const electroview = new Electroview({ rpc: electroviewRpc });
-	// Cast: the Electroview-generated rpc object satisfies SegRpcShape.
-	rpcImpl = electroview.rpc as unknown as SegRpcShape;
+	// Cast: the Electroview-generated rpc object satisfies FgltRpcShape.
+	rpcImpl = electroview.rpc as unknown as FgltRpcShape;
 } catch (err) {
 	console.warn(
 		'Electrobun bridge unavailable; UI is rendering in browser-stub mode.',

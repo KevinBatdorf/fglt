@@ -132,7 +132,7 @@ export function TitleBar({ title }: { title: string }) {
 				className="flex-1 flex items-center px-3 gap-2 cursor-default"
 			>
 				<span className="text-[11px] tracking-wide text-zinc-500 font-medium truncate">
-					SEG <span className="text-zinc-600">— find a game like that.</span>
+					Find a game like that
 				</span>
 			</div>
 			<WindowControls

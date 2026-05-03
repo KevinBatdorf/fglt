@@ -1,5 +1,5 @@
 /**
- * Typed wrappers around the SEG API at http://localhost:3110.
+ * Typed wrappers around the FGLT API at http://localhost:3110.
  *
  * Kept thin — every function returns the unwrapped JSON. Errors throw with
  * the API's status code so the caller can decide UX.
@@ -19,7 +19,7 @@ export const API_BASE =
  * Sidebar (and anything else interested) refetches counts.
  */
 export function notifyListsChanged(): void {
-	window.dispatchEvent(new CustomEvent('seg:lists:changed'));
+	window.dispatchEvent(new CustomEvent('fglt:lists:changed'));
 }
 
 export interface Stats {
@@ -122,7 +122,7 @@ export interface SavedSearchSummary {
 }
 
 export function notifySavedSearchesChanged(): void {
-	window.dispatchEvent(new CustomEvent('seg:saved-searches:changed'));
+	window.dispatchEvent(new CustomEvent('fglt:saved-searches:changed'));
 }
 
 export interface ListEntry {
@@ -339,7 +339,7 @@ export type ConfigKey =
 
 /** Cross-component event: emitted right after a successful POST /settings/config. */
 export function notifyConfigChanged(): void {
-	window.dispatchEvent(new CustomEvent('seg:config:changed'));
+	window.dispatchEvent(new CustomEvent('fglt:config:changed'));
 }
 
 export const api = {

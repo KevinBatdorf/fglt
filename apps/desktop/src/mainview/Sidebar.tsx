@@ -221,13 +221,13 @@ export function Sidebar({
 		refreshLists();
 		refreshSaved();
 		const onPrefs = () => setVis(getSidebarVisibility());
-		window.addEventListener('seg:prefs:sidebar-toggled', onPrefs);
-		window.addEventListener('seg:lists:changed', refreshLists);
-		window.addEventListener('seg:saved-searches:changed', refreshSaved);
+		window.addEventListener('fglt:prefs:sidebar-toggled', onPrefs);
+		window.addEventListener('fglt:lists:changed', refreshLists);
+		window.addEventListener('fglt:saved-searches:changed', refreshSaved);
 		return () => {
-			window.removeEventListener('seg:prefs:sidebar-toggled', onPrefs);
-			window.removeEventListener('seg:lists:changed', refreshLists);
-			window.removeEventListener('seg:saved-searches:changed', refreshSaved);
+			window.removeEventListener('fglt:prefs:sidebar-toggled', onPrefs);
+			window.removeEventListener('fglt:lists:changed', refreshLists);
+			window.removeEventListener('fglt:saved-searches:changed', refreshSaved);
 		};
 	}, []);
 

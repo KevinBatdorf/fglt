@@ -912,7 +912,7 @@ function labelForDocker(kind: string): string {
  * - We diff against the last-loaded values so Save only POSTs what changed.
  * - When `requiredMissing` is non-empty, an amber callout pins to the top
  *   and the matching field labels glow amber. Saving the missing keys
- *   triggers `seg:config:changed`, which the App listens for to recompute
+ *   triggers `fglt:config:changed`, which the App listens for to recompute
  *   /health immediately instead of waiting on the 30s poll.
  */
 function ConfigurationSection({

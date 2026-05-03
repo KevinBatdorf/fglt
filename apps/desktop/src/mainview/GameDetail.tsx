@@ -195,9 +195,9 @@ export function GameDetail({
 	);
 	useEffect(() => {
 		const onChange = () => setAlwaysShowRefresh(getAlwaysShowRefreshIcons());
-		window.addEventListener('seg:prefs:always-refresh-icons', onChange);
+		window.addEventListener('fglt:prefs:always-refresh-icons', onChange);
 		return () =>
-			window.removeEventListener('seg:prefs:always-refresh-icons', onChange);
+			window.removeEventListener('fglt:prefs:always-refresh-icons', onChange);
 	}, []);
 	const reload = async () => {
 		const updated = await api.game(appid);
@@ -251,8 +251,8 @@ export function GameDetail({
 					/* keep stale data on refetch failure */
 				});
 		};
-		window.addEventListener('seg:lists:changed', onChange);
-		return () => window.removeEventListener('seg:lists:changed', onChange);
+		window.addEventListener('fglt:lists:changed', onChange);
+		return () => window.removeEventListener('fglt:lists:changed', onChange);
 	}, [appid]);
 
 	async function handleLaunchAction(platform: Platform) {

@@ -4,13 +4,13 @@
  */
 
 const KEY = {
-	recentlyAddedMonths: 'seg.prefs.recentlyAddedMonths.v1',
-	vibesEnabled: 'seg.prefs.vibesEnabled.v1',
-	vibesCount: 'seg.prefs.vibesCount.v1',
-	sidebar: 'seg.prefs.sidebar.v1',
-	cardsPerRow: 'seg.prefs.cardsPerRow.v1',
-	alwaysShowRefreshIcons: 'seg.prefs.alwaysShowRefreshIcons.v1',
-	recentlyViewed: 'seg.recentlyViewed.v1',
+	recentlyAddedMonths: 'fglt.prefs.recentlyAddedMonths.v1',
+	vibesEnabled: 'fglt.prefs.vibesEnabled.v1',
+	vibesCount: 'fglt.prefs.vibesCount.v1',
+	sidebar: 'fglt.prefs.sidebar.v1',
+	cardsPerRow: 'fglt.prefs.cardsPerRow.v1',
+	alwaysShowRefreshIcons: 'fglt.prefs.alwaysShowRefreshIcons.v1',
+	recentlyViewed: 'fglt.recentlyViewed.v1',
 } as const;
 
 // No artificial cap — keep the full history. Each entry is tiny (just
@@ -109,7 +109,7 @@ export function getVibesEnabled(): boolean {
 export function setVibesEnabled(enabled: boolean): void {
 	try {
 		localStorage.setItem(KEY.vibesEnabled, enabled ? 'true' : 'false');
-		window.dispatchEvent(new CustomEvent('seg:prefs:vibes-toggled'));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:vibes-toggled'));
 	} catch {
 		/* ignore */
 	}
@@ -130,7 +130,7 @@ export function getVibesCount(): number {
 export function setVibesCount(n: number): void {
 	try {
 		localStorage.setItem(KEY.vibesCount, String(n));
-		window.dispatchEvent(new CustomEvent('seg:prefs:vibes-toggled'));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:vibes-toggled'));
 	} catch {
 		/* ignore */
 	}
@@ -150,7 +150,7 @@ export function getSidebarVisibility(): SidebarVisibility {
 export function setSidebarVisibility(v: SidebarVisibility): void {
 	try {
 		localStorage.setItem(KEY.sidebar, JSON.stringify(v));
-		window.dispatchEvent(new CustomEvent('seg:prefs:sidebar-toggled'));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:sidebar-toggled'));
 	} catch {
 		/* ignore */
 	}
@@ -171,7 +171,7 @@ export function getCardsPerRow(): number {
 export function setCardsPerRow(n: number): void {
 	try {
 		localStorage.setItem(KEY.cardsPerRow, String(n));
-		window.dispatchEvent(new CustomEvent('seg:prefs:cards-per-row'));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:cards-per-row'));
 	} catch {
 		/* ignore */
 	}
@@ -206,7 +206,7 @@ export function recordRecentlyViewed(entry: {
 		current.unshift({ ...entry, viewed_at: new Date().toISOString() });
 		const capped = current.slice(0, RECENTLY_VIEWED_MAX);
 		localStorage.setItem(KEY.recentlyViewed, JSON.stringify(capped));
-		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
+		window.dispatchEvent(new CustomEvent('fglt:recently-viewed:changed'));
 	} catch {
 		/* ignore quota / parse errors */
 	}
@@ -215,7 +215,7 @@ export function recordRecentlyViewed(entry: {
 export function clearRecentlyViewed(): void {
 	try {
 		localStorage.removeItem(KEY.recentlyViewed);
-		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
+		window.dispatchEvent(new CustomEvent('fglt:recently-viewed:changed'));
 	} catch {
 		/* ignore */
 	}
@@ -225,7 +225,7 @@ export function removeFromRecentlyViewed(appid: number): void {
 	try {
 		const filtered = getRecentlyViewed().filter((e) => e.appid !== appid);
 		localStorage.setItem(KEY.recentlyViewed, JSON.stringify(filtered));
-		window.dispatchEvent(new CustomEvent('seg:recently-viewed:changed'));
+		window.dispatchEvent(new CustomEvent('fglt:recently-viewed:changed'));
 	} catch {
 		/* ignore */
 	}
@@ -242,7 +242,7 @@ export function getAlwaysShowRefreshIcons(): boolean {
 export function setAlwaysShowRefreshIcons(v: boolean): void {
 	try {
 		localStorage.setItem(KEY.alwaysShowRefreshIcons, v ? 'true' : 'false');
-		window.dispatchEvent(new CustomEvent('seg:prefs:always-refresh-icons'));
+		window.dispatchEvent(new CustomEvent('fglt:prefs:always-refresh-icons'));
 	} catch {
 		/* ignore */
 	}

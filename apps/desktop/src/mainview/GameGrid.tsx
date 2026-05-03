@@ -42,8 +42,8 @@ export function GameGrid({
 
 	useEffect(() => {
 		const handler = () => setPerRow(getCardsPerRow());
-		window.addEventListener('seg:prefs:cards-per-row', handler);
-		return () => window.removeEventListener('seg:prefs:cards-per-row', handler);
+		window.addEventListener('fglt:prefs:cards-per-row', handler);
+		return () => window.removeEventListener('fglt:prefs:cards-per-row', handler);
 	}, []);
 
 	const visible = maxRows ? games.slice(0, perRow * maxRows) : games;
