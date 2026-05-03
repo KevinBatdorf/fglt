@@ -1049,7 +1049,7 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 		await rpc.request.openUrl({ url: 'https://legendary.gl/epiclogin' });
 		setShowCodeForm(true);
 		setMsg(
-			'Sign in to Epic in the browser. After login you\'ll see a JSON page — copy the long "authorizationCode" value and paste it below.',
+			'Sign in to Epic in the browser. After login you\'ll see a JSON page — copy the long "authorizationCode" value and paste it below within a few minutes (codes expire fast).',
 		);
 	}
 

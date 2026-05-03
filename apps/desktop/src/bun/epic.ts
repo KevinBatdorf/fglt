@@ -150,6 +150,13 @@ export function epicStatus(): EpicStatus {
  * Exchange an Epic SSO auth code for tokens. The user got the code by
  * opening EPIC_AUTH_URL, signing in, and copying the `authorizationCode`
  * value out of the JSON page they land on.
+ *
+ * Common failure modes:
+ *   - Code expired (Epic auth codes are valid for ~5 minutes)
+ *   - Code already used (one-shot)
+ *   - User pasted the wrong field from the JSON
+ * We surface the legendary stderr verbatim so the user sees the
+ * underlying error, plus a hint when stderr was suspiciously empty.
  */
 export function epicAuthExchange(code: string): {
 	ok: boolean;
@@ -157,14 +164,28 @@ export function epicAuthExchange(code: string): {
 } {
 	const trimmed = code.trim();
 	if (!trimmed) return { ok: false, error: 'auth code is empty' };
-	const r = run(['auth', '--code', trimmed], 30_000);
-	if (!r.ok) {
+	// Generous timeout — legendary spawns Python which can take a few
+	// seconds on Windows the first time, then the actual Epic API call
+	// can be slow.
+	const r = run(['auth', '--code', trimmed], 60_000);
+	if (r.ok) return { ok: true };
+	// Surface as much diagnostic info as we have. Most legendary errors
+	// land in stderr ("Failed to login: <reason>"); some go to stdout.
+	const detail = (r.stderr || r.stdout || '').trim();
+	if (detail) {
+		// Trim long Python tracebacks to just the last line — usually
+		// the actionable bit.
+		const lines = detail.split(/\r?\n/).filter((l) => l.trim().length > 0);
+		const tail = lines[lines.length - 1] ?? detail;
 		return {
 			ok: false,
-			error: (r.stderr || r.stdout || 'auth failed').trim(),
+			error: `${tail} (exit ${r.status ?? 'null'}). Codes expire fast — click "Open Epic sign-in" again to get a fresh one.`,
 		};
 	}
-	return { ok: true };
+	return {
+		ok: false,
+		error: `legendary exited ${r.status ?? 'null'} with no output. Check that legendary works on the command line, then try again.`,
+	};
 }
 
 export interface EpicLibraryItem {
