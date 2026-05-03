@@ -299,6 +299,8 @@ export interface HealthStatus {
 	ai: 'ok' | 'disabled';
 	steam_key: 'present' | 'missing';
 	steam_id: 'present' | 'missing';
+	youtube_key: 'present' | 'missing';
+	opencritic_key: 'present' | 'missing';
 	total_games: number;
 	last_sync: string | null;
 	/**

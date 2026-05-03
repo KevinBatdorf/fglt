@@ -673,14 +673,28 @@ function SystemStatusSection() {
 						ok: health.ai === 'ok',
 					},
 					{
-						label: 'STEAM_API_KEY',
+						label: 'Steam API key',
 						value: health.steam_key === 'present' ? 'Set' : 'Missing',
 						ok: health.steam_key === 'present',
 					},
 					{
-						label: 'STEAM_ID',
+						label: 'Steam ID',
 						value: health.steam_id === 'present' ? 'Set' : 'Missing',
 						ok: health.steam_id === 'present',
+					},
+					{
+						label: 'YouTube API key',
+						value:
+							health.youtube_key === 'present' ? 'Set' : 'Not set (optional)',
+						// Optional integrations show amber when missing, not red —
+						// the library is fully functional without them.
+						ok: health.youtube_key === 'present',
+					},
+					{
+						label: 'OpenCritic key',
+						value:
+							health.opencritic_key === 'present' ? 'Set' : 'Not set (optional)',
+						ok: health.opencritic_key === 'present',
 					},
 					{
 						label: 'Games in library',

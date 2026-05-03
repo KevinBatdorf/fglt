@@ -103,6 +103,12 @@ app.get('/health', async (c) => {
 		ai: (await isOllamaEnabled()) ? 'ok' : 'disabled',
 		steam_key: cfg.STEAM_API_KEY ? 'present' : 'missing',
 		steam_id: cfg.STEAM_ID ? 'present' : 'missing',
+		// Optional enrichment integrations — surfaced in Settings → System
+		// status so the user can see at a glance which data sources will
+		// fire when the cron jobs next run. 'missing' here just means the
+		// matching panel/badge stays empty; the library still works.
+		youtube_key: cfg.YOUTUBE_API_KEY ? 'present' : 'missing',
+		opencritic_key: cfg.OPENCRITIC_API_KEY ? 'present' : 'missing',
 		total_games: totalGames,
 		last_sync: lastSync,
 		required_missing: required,
