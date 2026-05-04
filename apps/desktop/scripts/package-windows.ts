@@ -5,21 +5,36 @@
  * Pre-conditions: `electrobun build --env=stable` has run, producing
  *   apps/desktop/build/stable-win-x64/FindaGameLikeThat/
  *
+ * IMPORTANT: that directory is NOT the runnable app — it's a
+ * self-extracting stub. Its `bin/launcher` is actually the extractor
+ * binary (424 KB), not the real launcher (310 KB). The real app
+ * (real launcher.exe + libNativeWrapper.dll + bun.exe + 100 other
+ * files) lives inside `Resources/<hash>.tar.zst`. If you ship the
+ * stub directly, double-clicking the installed launcher.exe just
+ * prints "Not a valid self-extracting installer" and exits.
+ *
  * Steps:
- *   1. Make a clean copy of FindaGameLikeThat/ at build/installer-input/
- *      so we can mutate it (rename launcher → launcher.exe) without
- *      polluting the original Electrobun output.
- *   2. Rename bin/launcher to bin/launcher.exe — Windows shell shortcuts
- *      and SmartScreen recognize PE files better with the .exe suffix.
- *   3. Invoke makensis with -DVERSION / -DBUILD_DIR / -DOUTPUT_DIR /
- *      -DOUTPUT_NAME / -DICON.
+ *   1. Decompress Resources/<hash>.tar.zst (using Electrobun's
+ *      bundled zig-zstd) and extract the tar into build/installer-
+ *      input/ — this gives us the real, runnable bundle.
+ *   2. Run rcedit on launcher.exe (and bun.exe) to embed the app
+ *      icon. Electrobun's own embed step is broken because its
+ *      compiled CLI hardcodes a dev-only path for rcedit.
+ *   3. Invoke makensis with -DBUILD_DIR pointing at the staged
+ *      bundle.
  *   4. Drop the resulting installer into apps/desktop/artifacts/.
  *
  * Run with: `bun run build:installer`
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	rmSync,
+	statSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // @ts-expect-error — rcedit ships JS with no bundled .d.ts on this version
@@ -28,10 +43,18 @@ import rcedit from 'rcedit';
 const ROOT = join(import.meta.dir, '..');
 const BUILD = join(ROOT, 'build', 'stable-win-x64');
 const APP_SRC = join(BUILD, 'FindaGameLikeThat');
+const APP_RESOURCES = join(APP_SRC, 'Resources');
 const STAGING = join(ROOT, 'build', 'installer-input');
 const NSI = join(ROOT, 'installer', 'fglt.nsi');
 const ICON = join(ROOT, 'assets', 'icon.ico');
 const ARTIFACTS = join(ROOT, 'artifacts');
+const ZIG_ZSTD = join(
+	ROOT,
+	'node_modules',
+	'electrobun',
+	'dist-win-x64',
+	'zig-zstd.exe',
+);
 
 function fail(msg: string): never {
 	console.error(`package-windows: ${msg}`);
@@ -56,44 +79,118 @@ async function readVersion(): Promise<string> {
 	return pkg.version;
 }
 
-function stage(): void {
-	if (!existsSync(APP_SRC))
+function findPayloadTarZst(): string {
+	if (!existsSync(APP_RESOURCES))
 		fail(
-			`expected Electrobun bundle at ${APP_SRC} — run \`bun run build\` first`,
+			`expected Electrobun Resources/ at ${APP_RESOURCES} — run \`bun run build\` first`,
 		);
-	rmSync(STAGING, { recursive: true, force: true });
-	mkdirSync(STAGING, { recursive: true });
-	cpSync(APP_SRC, STAGING, { recursive: true });
-
-	const launcher = join(STAGING, 'bin', 'launcher');
-	const launcherExe = join(STAGING, 'bin', 'launcher.exe');
-	if (existsSync(launcher) && !existsSync(launcherExe)) {
-		renameSync(launcher, launcherExe);
-		console.log('  renamed bin/launcher → bin/launcher.exe');
-	} else if (!existsSync(launcherExe)) {
-		fail(`expected launcher binary at ${launcher} or ${launcherExe}`);
+	const candidates = readdirSync(APP_RESOURCES).filter((f) =>
+		f.endsWith('.tar.zst'),
+	);
+	if (candidates.length !== 1) {
+		fail(
+			`expected exactly one .tar.zst under ${APP_RESOURCES}, found ${candidates.length}: ${candidates.join(', ')}`,
+		);
 	}
+	return join(APP_RESOURCES, candidates[0]);
 }
 
-async function embedIcon(): Promise<void> {
+function stage(): void {
+	const payload = findPayloadTarZst();
+	if (!existsSync(ZIG_ZSTD)) fail(`zig-zstd binary not found at ${ZIG_ZSTD}`);
+
+	rmSync(STAGING, { recursive: true, force: true });
+	mkdirSync(STAGING, { recursive: true });
+
+	// 1. Decompress <hash>.tar.zst → <STAGING>/payload.tar
+	const tarPath = join(STAGING, 'payload.tar');
+	console.log(`  decompressing ${payload}`);
+	const decompress = spawnSync(
+		ZIG_ZSTD,
+		['decompress', '-i', payload, '-o', tarPath],
+		{ stdio: 'inherit' },
+	);
+	if (decompress.status !== 0) fail('zig-zstd decompress failed');
+
+	// 2. Extract the tar — its top-level entry is FindaGameLikeThat/, so we
+	//    extract into STAGING and then move that subdir's contents up.
+	const extractTmp = join(STAGING, 'tar-out');
+	mkdirSync(extractTmp, { recursive: true });
+	console.log(`  extracting tar`);
+	// Use Windows's built-in bsdtar at C:\Windows\System32\tar.exe — the
+	// MSYS/Cygwin `tar` on PATH treats "D:\..." as a remote host and dies
+	// with "Cannot connect to D: resolve failed".
+	const tarBin = 'C:\\Windows\\System32\\tar.exe';
+	if (!existsSync(tarBin))
+		fail(`Windows bsdtar not found at ${tarBin} (need Windows 10 1803+)`);
+	const extract = spawnSync(tarBin, ['-xf', tarPath, '-C', extractTmp], {
+		stdio: 'inherit',
+	});
+	if (extract.status !== 0) fail('tar extract failed');
+
+	// 3. Move FindaGameLikeThat/* up to STAGING/.
+	const innerTop = join(extractTmp, 'FindaGameLikeThat');
+	if (!existsSync(innerTop) || !statSync(innerTop).isDirectory())
+		fail(`expected FindaGameLikeThat/ inside payload tar; got: ${readdirSync(extractTmp).join(', ')}`);
+
+	for (const entry of readdirSync(innerTop)) {
+		const src = join(innerTop, entry);
+		const dst = join(STAGING, entry);
+		// On Windows, `move` (renameSync) across the same volume is fine.
+		// We use cp -r as a portable fallback under Bun's API.
+		spawnSync('cmd', ['/c', 'move', '/Y', src, dst], { stdio: 'ignore' });
+		if (!existsSync(dst))
+			fail(`failed to stage ${entry} into ${STAGING}`);
+	}
+
+	rmSync(extractTmp, { recursive: true, force: true });
+	rmSync(tarPath, { force: true });
+
+	const launcherExe = join(STAGING, 'bin', 'launcher.exe');
+	if (!existsSync(launcherExe))
+		fail(`real launcher.exe missing from extracted bundle at ${launcherExe}`);
+	const sz = statSync(launcherExe).size;
+	console.log(`  staged real launcher.exe (${sz} bytes)`);
+}
+
+async function embedIcon(version: string): Promise<void> {
 	// Electrobun's compiled CLI hardcodes a dev-machine path for `rcedit`,
 	// so its built-in icon embed fails on every other machine (logged as
 	// "Cannot find module … node_modules/rcedit/package.json"). We run
-	// rcedit ourselves against the staged binaries instead.
-	const targets = [
-		join(STAGING, 'bin', 'launcher.exe'),
-		join(STAGING, 'bin', 'bun.exe'),
-	];
-	for (const target of targets) {
-		if (!existsSync(target)) {
-			console.warn(`  skip embed: ${target} not found`);
-			continue;
-		}
+	// rcedit ourselves and also stamp Windows version metadata so File
+	// Explorer / taskbar show "Find a Game Like That" instead of blanks.
+	const launcher = join(STAGING, 'bin', 'launcher.exe');
+	if (!existsSync(launcher)) fail(`launcher.exe missing at ${launcher}`);
+	try {
+		await rcedit(launcher, {
+			icon: ICON,
+			'file-version': version,
+			'product-version': version,
+			'version-string': {
+				ProductName: 'Find a Game Like That',
+				FileDescription: 'Find a Game Like That',
+				CompanyName: 'Kevin Batdorf',
+				LegalCopyright: 'Kevin Batdorf',
+				OriginalFilename: 'launcher.exe',
+				InternalName: 'Find a Game Like That',
+			},
+		});
+		console.log(`  embedded icon + metadata → ${launcher}`);
+	} catch (e) {
+		fail(`rcedit failed on launcher: ${e instanceof Error ? e.message : e}`);
+	}
+
+	// Also embed icon into bun.exe so any moment Windows shows a process
+	// icon for it (rare, but seen during the brief launch window) it
+	// matches the rest. Skip metadata — bun.exe is a vendored runtime
+	// and we shouldn't claim authorship of it.
+	const bun = join(STAGING, 'bin', 'bun.exe');
+	if (existsSync(bun)) {
 		try {
-			await rcedit(target, { icon: ICON });
-			console.log(`  embedded icon → ${target}`);
+			await rcedit(bun, { icon: ICON });
+			console.log(`  embedded icon → ${bun}`);
 		} catch (e) {
-			fail(`rcedit failed on ${target}: ${e instanceof Error ? e.message : e}`);
+			fail(`rcedit failed on bun.exe: ${e instanceof Error ? e.message : e}`);
 		}
 	}
 }
@@ -124,6 +221,6 @@ const outputName = `FindAGameLikeThat-${version}-win-x64-Setup.exe`;
 
 console.log(`package-windows: building installer for v${version}`);
 stage();
-await embedIcon();
+await embedIcon(version);
 runMakensis(version, outputName);
 console.log(`package-windows: wrote ${join(ARTIFACTS, outputName)}`);

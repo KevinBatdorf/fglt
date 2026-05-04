@@ -15,9 +15,14 @@ import { rpc } from './lib/rpc';
 export function TitleBar({ title }: { title: string }) {
 	const dragRef = useRef<HTMLDivElement>(null);
 
-	// Keep the OS-level window title (taskbar, Alt-Tab) in sync.
+	// Keep the OS-level window title (taskbar tooltip, Alt-Tab thumbnail,
+	// taskbar preview) in sync. We always include the app name so the
+	// preview doesn't show just "Home" or "Settings" with no context.
 	useEffect(() => {
-		void rpc.request.windowSetTitle({ title }).catch(() => {});
+		const osTitle = title
+			? `${title} — Find a Game Like That`
+			: 'Find a Game Like That';
+		void rpc.request.windowSetTitle({ title: osTitle }).catch(() => {});
 	}, [title]);
 
 	const dragState = useRef<{
