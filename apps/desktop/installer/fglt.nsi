@@ -27,8 +27,11 @@
 Name "Find a Game Like That"
 OutFile "${OUTPUT_DIR}\${OUTPUT_NAME}"
 
-; Per-user install — no UAC prompt, same model as Discord/Slack/VS Code User
-InstallDir "$LOCALAPPDATA\FindAGameLikeThat"
+; Install to Electrobun's canonical path. Electrobun's launcher.exe expects
+; to live at <LOCALAPPDATA>/<identifier>/<channel>/app/ — installing
+; anywhere else triggers a self-bootstrap on first run that races our
+; install and breaks the user-facing experience.
+InstallDir "$LOCALAPPDATA\fglt.kbatdorf.dev\stable\app"
 InstallDirRegKey HKCU "Software\FindAGameLikeThat" "InstallDir"
 RequestExecutionLevel user
 Unicode true
@@ -59,11 +62,25 @@ VIAddVersionKey "LegalCopyright"  "${PUBLISHER}"
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install"
+  ; Wipe any stale Electrobun bootstrap state from a previous install or
+  ; from a developer's local test build. Without this, a stale hash in
+  ; <canonical>/Resources/version.json fools Electrobun's auto-updater
+  ; into thinking an update is needed and triggers a relocation race on
+  ; first launch. We're about to overwrite app/ anyway, but we also want
+  ; to drop the cached self-extraction tars to prevent rollback.
+  RMDir /r "$LOCALAPPDATA\fglt.kbatdorf.dev\stable\self-extraction"
+  RMDir /r "$INSTDIR"
+
+  ; Earlier 0.1.0 installer used $LOCALAPPDATA\FindAGameLikeThat — wipe
+  ; that out so a user upgrading from it doesn't end up with two app
+  ; directories or two Apps & Features entries.
+  RMDir /r "$LOCALAPPDATA\FindAGameLikeThat"
+
   SetOutPath "$INSTDIR"
   SetOverwrite on
 
   ; Copy the entire Electrobun bundle. package-windows.ts has already
-  ; renamed bin/launcher → bin/launcher.exe before invoking us.
+  ; renamed bin/launcher → bin/launcher.exe and embedded the app icon.
   File /r "${BUILD_DIR}\*.*"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -100,16 +117,19 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  ; Remove app files (everything we installed)
-  RMDir /r "$INSTDIR"
+  ; Remove the canonical Electrobun tree (app/ + self-extraction/).
+  ; This wipes the WebView2 user data dir under that tree as well, which
+  ; is fine — it's tied to the app installation, not user prefs.
+  RMDir /r "$LOCALAPPDATA\fglt.kbatdorf.dev"
 
   ; Shortcuts
   RMDir /r "$SMPROGRAMS\Find a Game Like That"
 
-  ; Registry — note: we deliberately do NOT touch
-  ; %LOCALAPPDATA%\fglt.kbatdorf.dev\ (the app's data dir for prefs /
-  ; docker compose state). Users keep their data through reinstalls.
+  ; Apps & Features registry — clean both ours and any leftover
+  ; Electrobun-generated entry under the identifier key.
   DeleteRegKey HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\FindAGameLikeThat"
+  DeleteRegKey HKCU \
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\fglt.kbatdorf.dev"
   DeleteRegKey HKCU "Software\FindAGameLikeThat"
 SectionEnd

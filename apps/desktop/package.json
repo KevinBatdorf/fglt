@@ -31,6 +31,7 @@
 		"concurrently": "^9.1.0",
 		"png-to-ico": "^3.0.1",
 		"postcss": "^8.4.49",
+		"rcedit": "^4.0.1",
 		"sharp": "^0.34.5",
 		"tailwindcss": "^3.4.16",
 		"typescript": "^5.7.2",

@@ -22,6 +22,8 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+// @ts-expect-error — rcedit ships JS with no bundled .d.ts on this version
+import rcedit from 'rcedit';
 
 const ROOT = join(import.meta.dir, '..');
 const BUILD = join(ROOT, 'build', 'stable-win-x64');
@@ -73,6 +75,29 @@ function stage(): void {
 	}
 }
 
+async function embedIcon(): Promise<void> {
+	// Electrobun's compiled CLI hardcodes a dev-machine path for `rcedit`,
+	// so its built-in icon embed fails on every other machine (logged as
+	// "Cannot find module … node_modules/rcedit/package.json"). We run
+	// rcedit ourselves against the staged binaries instead.
+	const targets = [
+		join(STAGING, 'bin', 'launcher.exe'),
+		join(STAGING, 'bin', 'bun.exe'),
+	];
+	for (const target of targets) {
+		if (!existsSync(target)) {
+			console.warn(`  skip embed: ${target} not found`);
+			continue;
+		}
+		try {
+			await rcedit(target, { icon: ICON });
+			console.log(`  embedded icon → ${target}`);
+		} catch (e) {
+			fail(`rcedit failed on ${target}: ${e instanceof Error ? e.message : e}`);
+		}
+	}
+}
+
 function runMakensis(version: string, outputName: string): void {
 	const makensis = which('makensis');
 	if (!makensis)
@@ -99,5 +124,6 @@ const outputName = `FindAGameLikeThat-${version}-win-x64-Setup.exe`;
 
 console.log(`package-windows: building installer for v${version}`);
 stage();
+await embedIcon();
 runMakensis(version, outputName);
 console.log(`package-windows: wrote ${join(ARTIFACTS, outputName)}`);
