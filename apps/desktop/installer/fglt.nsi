@@ -31,8 +31,12 @@ OutFile "${OUTPUT_DIR}\${OUTPUT_NAME}"
 ; Installer, GitHub Desktop). Per-user → no UAC. The launcher we ship
 ; is the real Electrobun launcher (not the self-extracting stub), so
 ; it just spawns bun.exe in place — no relocation, no bootstrap race.
+;
+; NOTE: deliberately NO `InstallDirRegKey` — we always want fresh
+; installs to land at the default path, even when a prior install
+; (e.g. v0.1.0's `fglt.kbatdorf.dev\stable\app\`) left a stale path
+; in the registry that would otherwise pre-fill the directory page.
 InstallDir "$LOCALAPPDATA\Programs\FindAGameLikeThat"
-InstallDirRegKey HKCU "Software\FindAGameLikeThat" "InstallDir"
 RequestExecutionLevel user
 Unicode true
 
@@ -112,8 +116,29 @@ Section "Install"
   WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" "$0"
 SectionEnd
 
+; Uninstall init — when uninstall.exe is launched from $INSTDIR, copy it
+; to %TEMP% and re-launch from there so the Uninstall section can delete
+; $INSTDIR (including uninstall.exe itself) without "file in use" errors.
+; NSIS's built-in auto-bootstrap is unreliable under /S silent mode, so
+; we do this explicitly.
+Function un.onInit
+  StrCmp "$EXEDIR" "$INSTDIR" 0 done
+  StrCpy $1 ""
+  ${If} ${Silent}
+    StrCpy $1 "/S"
+  ${EndIf}
+  StrCpy $0 "$TEMP\FindAGameLikeThat-Uninstall.exe"
+  CopyFiles /SILENT "$EXEPATH" "$0"
+  Exec '"$0" $1 _?=$INSTDIR'
+  Quit
+done:
+FunctionEnd
+
 Section "Uninstall"
-  ; Remove app files (this directory)
+  ; Remove app files (this directory). Belt-and-suspenders: explicitly
+  ; delete uninstall.exe first in case the OS hasn't released the
+  ; original handle yet, then RMDir the rest.
+  Delete /REBOOTOK "$INSTDIR\uninstall.exe"
   RMDir /r "$INSTDIR"
 
   ; Remove WebView2 user data dir + any leftover Electrobun runtime state.
