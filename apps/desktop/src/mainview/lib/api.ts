@@ -302,6 +302,7 @@ export interface HealthStatus {
 	youtube_key: 'present' | 'missing';
 	opencritic_key: 'present' | 'missing';
 	gog: 'connected' | 'disconnected';
+	epic: 'connected' | 'disconnected';
 	total_games: number;
 	last_sync: string | null;
 	/** ISO timestamp of the next scheduled Steam sync (computed from SYNC_CRON). */

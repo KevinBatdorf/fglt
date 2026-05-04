@@ -712,10 +712,11 @@ function SystemStatusSection() {
 							},
 							{
 								label: 'Epic',
-								value: 'Manual setup (optional)',
-								// Always amber — there's no auth-state to detect for Epic.
-								// "Manual setup" tells the user what's up without a red flag.
-								ok: false,
+								value:
+									health.epic === 'connected'
+										? 'Connected'
+										: 'Not connected (optional)',
+								ok: health.epic === 'connected',
 							},
 						],
 					},

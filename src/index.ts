@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { raw } from './db';
 import { getConfig } from './lib/config';
+import { epicStatus } from './lib/epic';
 import { loadTokens as loadGogTokens } from './lib/gog';
 import { isOllamaEnabled } from './lib/ollama';
 import { isYouTubeEnabled } from './lib/youtube';
@@ -114,6 +115,9 @@ app.get('/health', async (c) => {
 		// Epic has no equivalent server-side state (it's a manual CLI
 		// flow), so it's not surfaced here.
 		gog: (await loadGogTokens().catch(() => null)) ? 'connected' : 'disconnected',
+		// Epic — derived from legendary's auth state inside the container.
+		// Cheap (just a file-existence check); no subprocess spawn.
+		epic: epicStatus().kind === 'authed' ? 'connected' : 'disconnected',
 		total_games: totalGames,
 		last_sync: lastSync,
 		// Next scheduled Steam sync — based on the SYNC_CRON env (default
