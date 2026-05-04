@@ -5,8 +5,8 @@ type EpicStatus =
 	| { kind: 'not_installed' }
 	| { kind: 'not_authed' }
 	| { kind: 'authed'; account?: string };
+
 import { GameImage } from './GameImage';
-import { Select } from './Select';
 import {
 	type ActivityResponse,
 	api,
@@ -38,6 +38,7 @@ import {
 	VIBES_COUNT_MIN,
 } from './lib/prefs';
 import { rpc } from './lib/rpc';
+import { Select } from './Select';
 
 interface Props {
 	stats: Stats | null;
@@ -322,11 +323,10 @@ export function Settings({
 				<p className="text-xs text-zinc-500 mt-2">
 					External data (description, reviews, scores, videos, HowLongToBeat
 					times) auto-refreshes on a background schedule — every 15 min for
-					Steam metadata, daily for OpenCritic / YouTube / SteamSpy. The ↻
-					icons here let you force a refresh on a specific game without
-					waiting. Hidden by default; the icon still always appears for
-					games released in the last 14 days since their data churns right
-					after launch.
+					Steam metadata, daily for OpenCritic / YouTube / SteamSpy. The ↻ icons
+					here let you force a refresh on a specific game without waiting.
+					Hidden by default; the icon still always appears for games released in
+					the last 14 days since their data churns right after launch.
 				</p>
 			</section>
 
@@ -550,10 +550,7 @@ export function Settings({
  * timestamp with how soon the next sync will fire (computed by
  * /health from the cron expression).
  */
-function lastSyncLabel(
-	lastIso: string | null,
-	nextIso: string | null,
-): string {
+function lastSyncLabel(lastIso: string | null, nextIso: string | null): string {
 	const last = lastIso ? new Date(lastIso).toLocaleString() : 'Never';
 	if (!nextIso) return last;
 	const ms = new Date(nextIso).getTime() - Date.now();
@@ -928,9 +925,9 @@ function GogConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 				<div>
 					<div className="text-sm font-medium">GOG</div>
 					<p className="text-xs text-zinc-500 mt-1">
-						Imports your owned GOG games and matches them to Steam
-						appids so a single game can show ownership across stores.
-						GOG-only titles are skipped.
+						Imports your owned GOG games and matches them to Steam appids so a
+						single game can show ownership across stores. GOG-only titles are
+						skipped.
 					</p>
 				</div>
 				<div className="text-xs tabular-nums">
@@ -999,9 +996,7 @@ function GogConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 					)}
 				</div>
 			)}
-			{msg && (
-				<div className="text-xs text-zinc-400 break-words">{msg}</div>
-			)}
+			{msg && <div className="text-xs text-zinc-400 break-words">{msg}</div>}
 		</div>
 	);
 }
@@ -1129,8 +1124,8 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 					<div className="text-sm font-medium">Epic Games</div>
 					<p className="text-xs text-zinc-500 mt-1">
 						Epic has no public library API — we drive the third-party{' '}
-						<code>legendary-gl</code> CLI installed on your machine.
-						One-time install, then everything happens in-app.
+						<code>legendary-gl</code> CLI installed on your machine. One-time
+						install, then everything happens in-app.
 					</p>
 				</div>
 				<div className="text-xs tabular-nums">
@@ -1145,7 +1140,10 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 					)}
 					{kind === 'authed' && (
 						<span className="text-emerald-300">
-							Connected{status?.kind === 'authed' && status.account ? ` as ${status.account}` : ''}
+							Connected
+							{status?.kind === 'authed' && status.account
+								? ` as ${status.account}`
+								: ''}
 						</span>
 					)}
 				</div>
@@ -1154,10 +1152,9 @@ function EpicConnect({ onSyncComplete }: { onSyncComplete: () => void }) {
 			{kind === 'not_installed' && (
 				<div className="space-y-2 text-xs text-amber-300">
 					<p>
-						The legendary CLI isn't reachable from inside the backend
-						container — this shouldn't happen on a normal install. Try
-						"Update backend" in Settings → Backend to rebuild the image,
-						then come back here.
+						The legendary CLI isn't reachable from inside the backend container
+						— this shouldn't happen on a normal install. Try "Update backend" in
+						Settings → Backend to rebuild the image, then come back here.
 					</p>
 					<button
 						type="button"
@@ -1586,10 +1583,7 @@ function ConfigurationSection({
 					AI + enrichment
 				</div>
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
-					<AIProviderSection
-						{...fieldProps}
-						loadedSnapshot={loaded ?? {}}
-					/>
+					<AIProviderSection {...fieldProps} loadedSnapshot={loaded ?? {}} />
 
 					<FieldGroup
 						title="Enrichment (optional)"
@@ -1775,9 +1769,8 @@ function AIProviderSection(props: {
 					AI provider (optional)
 				</div>
 				<p className="text-xs text-zinc-500 mt-0.5">
-					Powers semantic search and vibe-chip generation. Without it,
-					search falls back to keyword-only and vibe chips become a static
-					list.
+					Powers semantic search and vibe-chip generation. Without it, search
+					falls back to keyword-only and vibe chips become a static list.
 				</p>
 			</div>
 			<div className="flex flex-wrap gap-2">
@@ -1824,21 +1817,16 @@ function AIProviderSection(props: {
 						helpUrl="https://ollama.com/download"
 						helpUrlLabel="Get Ollama"
 					/>
-					<ConfigField
-						{...props}
-						keyName="AI_CHAT_MODEL"
-						label="Chat model"
-					/>
+					<ConfigField {...props} keyName="AI_CHAT_MODEL" label="Chat model" />
 					<ConfigField
 						{...props}
 						keyName="AI_EMBED_MODEL"
 						label="Embed model"
 					/>
 					<p className="text-[11px] text-zinc-500">
-						Defaults shown above. Make sure you've pulled both models in
-						Ollama (
-						<code className="text-zinc-400">ollama pull &lt;name&gt;</code>
-						) before hitting Save.
+						Defaults shown above. Make sure you've pulled both models in Ollama
+						(<code className="text-zinc-400">ollama pull &lt;name&gt;</code>)
+						before hitting Save.
 					</p>
 				</div>
 			)}
@@ -1943,11 +1931,13 @@ function AIPreview({
 				aiBaseUrl === savedBase &&
 				// If the user typed a new key, it's an unsaved change. If
 				// they kept the masked placeholder, it matches saved.
-				(isMaskedValue(aiApiKey) ? savedKeyPresent : !aiApiKey && !savedKeyPresent)));
+				(isMaskedValue(aiApiKey)
+					? savedKeyPresent
+					: !aiApiKey && !savedKeyPresent)));
 
 	const status =
 		kind === 'missing'
-			? 'Won\'t save (incomplete)'
+			? "Won't save (incomplete)"
 			: matchesSaved
 				? 'Active'
 				: 'Click Save to apply';

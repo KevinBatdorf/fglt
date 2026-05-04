@@ -114,7 +114,9 @@ app.get('/health', async (c) => {
 		// GOG ownership — checks whether the OAuth tokens file exists.
 		// Epic has no equivalent server-side state (it's a manual CLI
 		// flow), so it's not surfaced here.
-		gog: (await loadGogTokens().catch(() => null)) ? 'connected' : 'disconnected',
+		gog: (await loadGogTokens().catch(() => null))
+			? 'connected'
+			: 'disconnected',
 		// Epic — derived from legendary's auth state inside the container.
 		// Cheap (just a file-existence check); no subprocess spawn.
 		epic: epicStatus().kind === 'authed' ? 'connected' : 'disconnected',

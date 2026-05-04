@@ -319,9 +319,7 @@ function App() {
 		[view, lists, detailGameName, query],
 	);
 	// OS window title. Suffix when we have one; just the app name otherwise.
-	const windowTitle = titleSuffix
-		? titleSuffix
-		: 'Find a Game Like That';
+	const windowTitle = titleSuffix ? titleSuffix : 'Find a Game Like That';
 	const showHeader =
 		view.kind !== 'detail' &&
 		view.kind !== 'settings' &&
@@ -467,7 +465,8 @@ function SearchBar({
 			});
 		const handler = () => setVibesShown(getVibesEnabled());
 		window.addEventListener('fglt:prefs:vibes-toggled', handler);
-		return () => window.removeEventListener('fglt:prefs:vibes-toggled', handler);
+		return () =>
+			window.removeEventListener('fglt:prefs:vibes-toggled', handler);
 	}, []);
 
 	async function handleRegenerate() {

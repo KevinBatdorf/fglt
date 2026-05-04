@@ -17,7 +17,10 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 const LEGENDARY_BIN = process.env.LEGENDARY_BIN || 'legendary';
-const TOKENS_DIR = join(process.env.XDG_CONFIG_HOME || '/app/data', 'legendary');
+const TOKENS_DIR = join(
+	process.env.XDG_CONFIG_HOME || '/app/data',
+	'legendary',
+);
 const TOKENS_PATH = join(TOKENS_DIR, 'user.json');
 
 /** Public URL the user opens to get an Epic SSO auth code. */

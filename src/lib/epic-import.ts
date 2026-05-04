@@ -56,8 +56,7 @@ export async function importEpicLibrary(
 	let unmatched = 0;
 
 	for (const game of games) {
-		const title =
-			game.metadata?.title ?? game.app_title ?? game.app_name ?? '';
+		const title = game.metadata?.title ?? game.app_title ?? game.app_name ?? '';
 		const externalId = game.app_name;
 		const developer = game.metadata?.developer ?? null;
 		const acquired = game.metadata?.creationDate

@@ -385,8 +385,7 @@ export const api = {
 		jsonCall<{ ok: boolean; total: number; removed?: number }>('/sync', 'POST'),
 	gogStatus: (signal?: AbortSignal) =>
 		get<
-			| { authed: false }
-			| { authed: true; user_id: string; expires_at: string }
+			{ authed: false } | { authed: true; user_id: string; expires_at: string }
 		>('/sync/gog/status', signal),
 	gogAuthUrl: (signal?: AbortSignal) =>
 		get<{ url: string }>('/sync/gog/auth-url', signal),
