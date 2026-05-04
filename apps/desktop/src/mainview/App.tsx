@@ -314,12 +314,6 @@ function App() {
 		return () => window.removeEventListener('contextmenu', handler);
 	}, []);
 
-	const titleSuffix = useMemo(
-		() => deriveTitleSuffix(view, lists, detailGameName, query),
-		[view, lists, detailGameName, query],
-	);
-	// OS window title. Suffix when we have one; just the app name otherwise.
-	const windowTitle = titleSuffix ? titleSuffix : 'Find a Game Like That';
 	const showHeader =
 		view.kind !== 'detail' &&
 		view.kind !== 'settings' &&
@@ -328,7 +322,7 @@ function App() {
 	return (
 		<div className="relative h-screen bg-zinc-950 text-zinc-100 flex flex-col border border-zinc-700">
 			<ResizeEdges />
-			<TitleBar title={windowTitle} />
+			<TitleBar />
 			<HealthBanner
 				docker={docker}
 				onOpenSetupGuide={() => navigate({ kind: 'setup_guide' })}
@@ -389,36 +383,6 @@ function App() {
 			</div>
 		</div>
 	);
-}
-
-function deriveTitleSuffix(
-	view: View,
-	lists: ListSummary[],
-	detailName: string | null,
-	query: string,
-): string | null {
-	switch (view.kind) {
-		case 'home':
-			return 'Home';
-		case 'detail':
-			return detailName;
-		case 'search':
-			return view.query ? `"${view.query}"` : query ? `"${query}"` : 'Search';
-		case 'filter':
-			return PRESET_LABEL[view.what] ?? 'Library';
-		case 'discover':
-			return DISCOVER_LABEL[view.what] ?? 'Discover';
-		case 'platform':
-			return PLATFORM_LABEL[view.platform] ?? view.platform;
-		case 'list':
-			return lists.find((l) => l.slug === view.slug)?.name ?? view.slug;
-		case 'settings':
-			return 'Settings';
-		case 'setup_guide':
-			return 'Setup guide';
-		default:
-			return null;
-	}
 }
 
 const PRESET_LABEL: Record<string, string> = {

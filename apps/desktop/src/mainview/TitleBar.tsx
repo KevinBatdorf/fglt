@@ -12,18 +12,18 @@ import { rpc } from './lib/rpc';
  * acceptable for short drags, and the pointer is captured so the events
  * keep flowing even if the cursor outpaces the window.
  */
-export function TitleBar({ title }: { title: string }) {
+export function TitleBar() {
 	const dragRef = useRef<HTMLDivElement>(null);
 
-	// Keep the OS-level window title (taskbar tooltip, Alt-Tab thumbnail,
-	// taskbar preview) in sync. We always include the app name so the
-	// preview doesn't show just "Home" or "Settings" with no context.
+	// OS-level window title (taskbar tooltip, Alt-Tab thumbnail, taskbar
+	// preview) is always just the app name — current view is already
+	// visible in the in-app titlebar/sidebar and doesn't belong in the
+	// OS chrome.
 	useEffect(() => {
-		const osTitle = title
-			? `${title} — Find a Game Like That`
-			: 'Find a Game Like That';
-		void rpc.request.windowSetTitle({ title: osTitle }).catch(() => {});
-	}, [title]);
+		void rpc.request
+			.windowSetTitle({ title: 'Find a Game Like That' })
+			.catch(() => {});
+	}, []);
 
 	const dragState = useRef<{
 		pointerId: number;
