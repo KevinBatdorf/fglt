@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: 'Find a Game Like That',
 		identifier: 'fglt.kbatdorf.dev',
-		version: '0.1.0',
+		version: '0.1.1',
 	},
 	build: {
 		// Vite builds to dist/, we copy from there

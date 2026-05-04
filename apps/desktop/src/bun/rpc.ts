@@ -106,8 +106,19 @@ async function pollOnce() {
 }
 
 export function startUpdaterPolling(): void {
-	void refreshLocalVersion().then(() => pollOnce());
-	setInterval(pollOnce, UPDATE_CHECK_INTERVAL_MS);
+	// Only collect the local version for display in Settings → Updates.
+	// We deliberately DO NOT call pollOnce() here — Electrobun's
+	// Updater.checkForUpdate() FFI fast-fails the bun process (Windows
+	// exit code 0xC0000409) when the release manifest URL 404s, which
+	// instantly happens for any user whose installed version isn't the
+	// current latest tag. Until Electrobun's Updater is hardened, we
+	// ship without auto-update polling. Manual re-download is fine for
+	// v0.x; the existing Settings → Updates UI will report "Up to date"
+	// based on the never-set state.
+	void refreshLocalVersion();
+	// Re-enable when ready:
+	//   void refreshLocalVersion().then(() => pollOnce());
+	//   setInterval(pollOnce, UPDATE_CHECK_INTERVAL_MS);
 }
 
 // Path to the window-frame prefs file. Wired from index.ts at startup.

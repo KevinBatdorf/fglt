@@ -56,7 +56,14 @@ async function readWindowPrefs(): Promise<WindowPrefs | null> {
 }
 
 async function getMainViewUrl(): Promise<string> {
-	const channel = await Updater.localInfo.channel();
+	let channel: string | null = null;
+	try {
+		channel = await Updater.localInfo.channel();
+	} catch (e) {
+		// Updater state can be missing or malformed on a fresh install —
+		// don't let that bring the whole window startup down.
+		console.warn('[startup] Updater.localInfo.channel failed:', e);
+	}
 	if (channel === 'dev') {
 		try {
 			await fetch(DEV_SERVER_URL, { method: 'HEAD' });
@@ -71,43 +78,56 @@ async function getMainViewUrl(): Promise<string> {
 	return 'views://mainview/index.html';
 }
 
-const url = await getMainViewUrl();
-const rpc = defineFgltRpc();
-const savedFrame = await readWindowPrefs();
+try {
+	const url = await getMainViewUrl();
+	const rpc = defineFgltRpc();
+	const savedFrame = await readWindowPrefs();
 
-const mainWindow = new BrowserWindow({
-	title: 'Find a Game Like That',
-	url,
-	rpc,
-	titleBarStyle: 'hidden',
-	// Custom titlebar via React; ensure the OS window keeps its resize edges
-	// (WS_THICKFRAME on Windows / NSResizableWindowMask on macOS) — without
-	// this the chromeless frame can come up unresizable on Windows.
-	styleMask: {
-		Resizable: true,
-		Closable: true,
-		Miniaturizable: true,
-	},
-	frame: savedFrame ?? {
-		width: 1280,
-		height: 820,
-		x: 160,
-		y: 120,
-	},
-});
+	const mainWindow = new BrowserWindow({
+		title: 'Find a Game Like That',
+		url,
+		rpc,
+		titleBarStyle: 'hidden',
+		// Custom titlebar via React; ensure the OS window keeps its resize edges
+		// (WS_THICKFRAME on Windows / NSResizableWindowMask on macOS) — without
+		// this the chromeless frame can come up unresizable on Windows.
+		styleMask: {
+			Resizable: true,
+			Closable: true,
+			Miniaturizable: true,
+		},
+		frame: savedFrame ?? {
+			width: 1280,
+			height: 820,
+			x: 160,
+			y: 120,
+		},
+	});
 
-registerMainWindow(mainWindow);
-setPrefsPath(PREFS_PATH);
+	registerMainWindow(mainWindow);
+	setPrefsPath(PREFS_PATH);
 
-// Kick off the auto-update polling loop. Skips on the dev channel.
-startUpdaterPolling();
+	// Auto-update polling — skips on dev channel internally. Wrapped so
+	// a failure here doesn't take the window down.
+	try {
+		startUpdaterPolling();
+	} catch (e) {
+		console.error('[startup] startUpdaterPolling failed:', e);
+	}
 
-// Boot-time Docker bootstrap. Fire-and-forget so the window appears
-// instantly; the React side polls dockerStatus while the API is
-// unreachable and re-renders as the stack comes up.
-void bootstrapDocker();
+	// Boot-time Docker bootstrap. Fire-and-forget so the window appears
+	// instantly; the React side polls dockerStatus while the API is
+	// unreachable and re-renders as the stack comes up.
+	void bootstrapDocker();
 
-console.log('FGLT desktop started');
+	console.log('FGLT desktop started');
+} catch (e) {
+	// Last-resort log so a packaged-build crash leaves SOME breadcrumb
+	// in the launcher's stdout/stderr instead of a silent process exit.
+	console.error('[startup] FATAL — bun process exiting:', e);
+	if (e instanceof Error && e.stack) console.error(e.stack);
+	throw e;
+}
 
 /**
  * On first launch (or after a binary update), make sure the consumer
