@@ -31,26 +31,27 @@ function resolveVersion(): string {
 	process.exit(1);
 }
 
-async function stampConfig(version: string): Promise<void> {
-	const src = await readFile(CONFIG, 'utf8');
-	const next = src.replace(/version:\s*'[^']+'/, `version: '${version}'`);
-	if (next === src) {
-		console.error(`stamp-version: no version field found in ${CONFIG}`);
+async function stampFile(
+	path: string,
+	pattern: RegExp,
+	replacement: string,
+): Promise<void> {
+	const src = await readFile(path, 'utf8');
+	if (!pattern.test(src)) {
+		console.error(`stamp-version: no version field found in ${path}`);
 		process.exit(1);
 	}
-	await writeFile(CONFIG, next);
-	console.log(`  stamped ${CONFIG} → ${version}`);
+	const next = src.replace(pattern, replacement);
+	await writeFile(path, next);
+	console.log(`  stamped ${path}`);
+}
+
+async function stampConfig(version: string): Promise<void> {
+	await stampFile(CONFIG, /version:\s*'[^']+'/, `version: '${version}'`);
 }
 
 async function stampPackage(version: string): Promise<void> {
-	const src = await readFile(PKG, 'utf8');
-	const next = src.replace(/"version":\s*"[^"]+"/, `"version": "${version}"`);
-	if (next === src) {
-		console.error(`stamp-version: no version field found in ${PKG}`);
-		process.exit(1);
-	}
-	await writeFile(PKG, next);
-	console.log(`  stamped ${PKG} → ${version}`);
+	await stampFile(PKG, /"version":\s*"[^"]+"/, `"version": "${version}"`);
 }
 
 const version = resolveVersion();
