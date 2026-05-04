@@ -51,13 +51,13 @@ export function registerMainWindow(win: BrowserWindow): void {
 
 // ----- Auto-updater state ------------------------------------------------
 //
-// Manual updates only — the user downloads a new installer from GitHub.
-// We don't trigger Electrobun's `Updater.downloadUpdate()` /
-// `applyUpdate()` because the in-place tar.zst replacement strategy has
-// burned us on Windows (it raced the launcher's bootstrap and ran a
-// surprise `update.bat` flashing a cmd window). "Check Now" simply
-// fetches the published manifest and tells the user if there's a newer
-// version, with a button that opens the GitHub release page.
+// Re-enabled. Uses Electrobun's full Updater pipeline: checkForUpdate
+// fetches the manifest, downloadUpdate pulls the new tar.zst (or a
+// patch chain) into self-extraction, applyUpdate writes a Windows
+// batch script that moves the new app over the running one and
+// relaunches. Poll once at startup, then every 6h.
+
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 const updaterState: UpdaterStatus = {
 	currentVersion: null,
@@ -77,43 +77,31 @@ async function refreshLocalVersion() {
 	}
 }
 
-async function checkRemoteVersion() {
+async function pollOnce() {
 	if (updaterState.checking) return;
 	updaterState.checking = true;
 	try {
-		const [version, hash, baseUrl, channel] = await Promise.all([
-			Updater.localInfo.version(),
-			Updater.localInfo.hash(),
-			Updater.localInfo.baseUrl(),
-			Updater.localInfo.channel(),
-		]);
-		updaterState.currentVersion = version;
+		updaterState.currentVersion = await Updater.localInfo.version();
+		const channel = await Updater.localInfo.channel();
 		if (channel === 'dev') {
 			updaterState.lastError = null;
 			updaterState.lastChecked = new Date().toISOString();
 			return;
 		}
-		const url = `${baseUrl.replace(/\/+$/, '')}/${channel}-win-x64-update.json?cb=${Date.now()}`;
-		const res = await fetch(url, { redirect: 'follow' });
+		const result = await Updater.checkForUpdate();
 		updaterState.lastChecked = new Date().toISOString();
-		if (!res.ok) {
-			// 404 = no published manifest. Treat as "up to date" rather
-			// than red-text error so a user on a future / pre-release
-			// build doesn't see a scary message.
-			updaterState.updateAvailable = false;
-			updaterState.latestVersion = null;
-			updaterState.lastError = null;
-			return;
-		}
-		const remote = (await res.json()) as { version?: string; hash?: string };
-		if (remote.hash && remote.hash !== hash) {
-			updaterState.updateAvailable = true;
-			updaterState.latestVersion = remote.version ?? null;
+		updaterState.updateAvailable = !!result.updateAvailable;
+		updaterState.latestVersion = result.version ?? null;
+		updaterState.lastError = result.error || null;
+		if (result.updateAvailable) {
+			// Pre-download so applyUpdate is fast when the user clicks
+			// Restart. downloadUpdate sets updateInfo.updateReady on success.
+			await Updater.downloadUpdate();
+			const after = Updater.updateInfo();
+			updaterState.updateReady = !!after?.updateReady;
 		} else {
-			updaterState.updateAvailable = false;
-			updaterState.latestVersion = null;
+			updaterState.updateReady = false;
 		}
-		updaterState.lastError = null;
 	} catch (e) {
 		updaterState.lastError = e instanceof Error ? e.message : String(e);
 		updaterState.lastChecked = new Date().toISOString();
@@ -123,7 +111,8 @@ async function checkRemoteVersion() {
 }
 
 export function startUpdaterPolling(): void {
-	void refreshLocalVersion();
+	void refreshLocalVersion().then(() => pollOnce());
+	setInterval(() => void pollOnce(), UPDATE_CHECK_INTERVAL_MS);
 }
 
 // Path to the window-frame prefs file. Wired from index.ts at startup.
@@ -282,12 +271,25 @@ export function defineFgltRpc() {
 				},
 
 				updaterCheckNow: async (): Promise<UpdaterStatus> => {
-					await checkRemoteVersion();
+					await pollOnce();
 					return { ...updaterState };
 				},
 
-				updaterApply: (): Promise<{ ok: boolean; error?: string }> => {
-					return Promise.resolve({ ok: false, error: 'auto-update-disabled' });
+				updaterApply: async (): Promise<{ ok: boolean; error?: string }> => {
+					if (!updaterState.updateReady) {
+						return { ok: false, error: 'no-update-staged' };
+					}
+					try {
+						// Triggers the swap + relaunch. Process exits inside this
+						// call on success, so the response only matters on failures.
+						await Updater.applyUpdate();
+						return { ok: true };
+					} catch (e) {
+						return {
+							ok: false,
+							error: e instanceof Error ? e.message : String(e),
+						};
+					}
 				},
 
 				// ----- Docker stack control --------------------------------

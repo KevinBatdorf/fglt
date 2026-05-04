@@ -28,13 +28,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	rmSync,
-	statSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // @ts-expect-error — rcedit ships JS with no bundled .d.ts on this version
@@ -131,7 +125,9 @@ function stage(): void {
 	// 3. Move FindaGameLikeThat/* up to STAGING/.
 	const innerTop = join(extractTmp, 'FindaGameLikeThat');
 	if (!existsSync(innerTop) || !statSync(innerTop).isDirectory())
-		fail(`expected FindaGameLikeThat/ inside payload tar; got: ${readdirSync(extractTmp).join(', ')}`);
+		fail(
+			`expected FindaGameLikeThat/ inside payload tar; got: ${readdirSync(extractTmp).join(', ')}`,
+		);
 
 	for (const entry of readdirSync(innerTop)) {
 		const src = join(innerTop, entry);
@@ -139,8 +135,7 @@ function stage(): void {
 		// On Windows, `move` (renameSync) across the same volume is fine.
 		// We use cp -r as a portable fallback under Bun's API.
 		spawnSync('cmd', ['/c', 'move', '/Y', src, dst], { stdio: 'ignore' });
-		if (!existsSync(dst))
-			fail(`failed to stage ${entry} into ${STAGING}`);
+		if (!existsSync(dst)) fail(`failed to stage ${entry} into ${STAGING}`);
 	}
 
 	rmSync(extractTmp, { recursive: true, force: true });
@@ -232,7 +227,12 @@ function runMakensis(version: string, outputName: string): void {
 }
 
 const version = await readVersion();
-const outputName = `FindAGameLikeThat-${version}-win-x64-Setup.exe`;
+// Stable filename (no version in it) so the in-app updater can fetch
+// `releases/latest/download/FindAGameLikeThat-Setup.exe` without
+// having to know what the latest version number is. Version still
+// shows in the .exe's PE metadata, in the release name, and in Apps
+// & Features after install.
+const outputName = 'FindAGameLikeThat-Setup.exe';
 
 console.log(`package-windows: building installer for v${version}`);
 stage();

@@ -2117,6 +2117,11 @@ function UpdatesSubsection() {
 		}
 	}
 
+	async function restart() {
+		const r = await rpc.request.updaterApply({});
+		if (!r.ok) console.warn('updater apply failed', r.error);
+	}
+
 	const rows: { label: string; value: string }[] = [
 		{ label: 'Current version', value: u?.currentVersion ?? '—' },
 		{
@@ -2127,15 +2132,15 @@ function UpdatesSubsection() {
 		},
 		{
 			label: 'Status',
-			value: u?.updateAvailable
-				? `Update v${u.latestVersion ?? '?'} available`
-				: u?.lastError
-					? `Error: ${u.lastError}`
-					: 'Up to date',
+			value: u?.updateReady
+				? `Update v${u.latestVersion ?? '?'} ready — restart to apply`
+				: u?.updateAvailable
+					? `Downloading v${u.latestVersion ?? '?'}…`
+					: u?.lastError
+						? `Error: ${u.lastError}`
+						: 'Up to date',
 		},
 	];
-
-	const RELEASES_URL = 'https://github.com/KevinBatdorf/fglt/releases/latest';
 
 	return (
 		<div>
@@ -2144,15 +2149,13 @@ function UpdatesSubsection() {
 					Updates
 				</h2>
 				<div className="flex items-center gap-3">
-					{u?.updateAvailable && (
+					{u?.updateReady && (
 						<button
 							type="button"
-							onClick={() =>
-								void rpc.request.openUrl({ url: RELEASES_URL }).catch(() => {})
-							}
+							onClick={() => void restart()}
 							className="text-xs text-emerald-400 hover:text-emerald-300"
 						>
-							Download from GitHub
+							Restart to apply
 						</button>
 					)}
 					<button
