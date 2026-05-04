@@ -102,6 +102,11 @@ export function HealthBanner({ onOpenSetupGuide, docker }: BannerProps = {}) {
 	const [reachable, setReachable] = useState(true);
 	const [updater, setUpdater] = useState<UpdaterStatus | null>(null);
 	const [busy, setBusy] = useState(false);
+	// Hold the banner until we've actually polled at least once. Without
+	// this we show "API unreachable" for ~500ms on every cold start
+	// because the initial state defaults to `health=null` which derives
+	// to "unreachable", before the first fetch even completes.
+	const [hasPolledHealth, setHasPolledHealth] = useState(false);
 	const [dismissed, setDismissed] = useState<string | null>(() => {
 		try {
 			return sessionStorage.getItem(DISMISS_KEY);
@@ -118,6 +123,8 @@ export function HealthBanner({ onOpenSetupGuide, docker }: BannerProps = {}) {
 		} catch {
 			setReachable(false);
 			setHealth(null);
+		} finally {
+			setHasPolledHealth(true);
 		}
 	}
 
@@ -139,6 +146,14 @@ export function HealthBanner({ onOpenSetupGuide, docker }: BannerProps = {}) {
 		}, POLL_MS);
 		return () => clearInterval(t);
 	}, []);
+
+	// Suppress the banner during the initial-data window. We need both:
+	//   (a) at least one health poll to complete (success or fail), and
+	//   (b) docker status from App.tsx, which arrives a tick after mount.
+	// Without (b), a cold start where docker IS running flashes the red
+	// "API unreachable" banner before the first docker tick swaps it for
+	// "Backend starting".
+	if (!hasPolledHealth || docker === null || docker === undefined) return null;
 
 	const state = deriveState(health, reachable, docker ?? null, updater);
 	if (state.kind === 'ok') return null;

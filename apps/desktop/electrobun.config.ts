@@ -11,6 +11,10 @@ export default {
 		copy: {
 			'dist/index.html': 'views/mainview/index.html',
 			'dist/assets': 'views/mainview/assets',
+			// Favicon referenced by index.html as `/icon.png` — without
+			// this WebView2 logs "Could not open views file" and falls
+			// back to a generated tile from the page title.
+			'dist/icon.png': 'views/mainview/icon.png',
 			// Bundle the consumer compose file next to the binary so the
 			// app can manage the Docker stack itself (no terminal required).
 			// Copied here from the repo root by `bun run build:assets`.
