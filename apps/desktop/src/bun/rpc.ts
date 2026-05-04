@@ -51,11 +51,13 @@ export function registerMainWindow(win: BrowserWindow): void {
 
 // ----- Auto-updater state ------------------------------------------------
 //
-// Manual updates only: download the latest installer from GitHub releases.
-// Electrobun's `Updater.checkForUpdate()` FFI fast-fails the bun process
-// (Windows exit 0xC0000409) when the manifest URL 404s, which happens for
-// anyone not on the latest tag. Until upstream is hardened we only read
-// the local version for the Settings → Updates panel.
+// Manual updates only — the user downloads a new installer from GitHub.
+// We don't trigger Electrobun's `Updater.downloadUpdate()` /
+// `applyUpdate()` because the in-place tar.zst replacement strategy has
+// burned us on Windows (it raced the launcher's bootstrap and ran a
+// surprise `update.bat` flashing a cmd window). "Check Now" simply
+// fetches the published manifest and tells the user if there's a newer
+// version, with a button that opens the GitHub release page.
 
 const updaterState: UpdaterStatus = {
 	currentVersion: null,
@@ -72,6 +74,51 @@ async function refreshLocalVersion() {
 		updaterState.currentVersion = await Updater.localInfo.version();
 	} catch (e) {
 		console.warn('[updater] localInfo failed:', e);
+	}
+}
+
+async function checkRemoteVersion() {
+	if (updaterState.checking) return;
+	updaterState.checking = true;
+	try {
+		const [version, hash, baseUrl, channel] = await Promise.all([
+			Updater.localInfo.version(),
+			Updater.localInfo.hash(),
+			Updater.localInfo.baseUrl(),
+			Updater.localInfo.channel(),
+		]);
+		updaterState.currentVersion = version;
+		if (channel === 'dev') {
+			updaterState.lastError = null;
+			updaterState.lastChecked = new Date().toISOString();
+			return;
+		}
+		const url = `${baseUrl.replace(/\/+$/, '')}/${channel}-win-x64-update.json?cb=${Date.now()}`;
+		const res = await fetch(url, { redirect: 'follow' });
+		updaterState.lastChecked = new Date().toISOString();
+		if (!res.ok) {
+			// 404 = no published manifest. Treat as "up to date" rather
+			// than red-text error so a user on a future / pre-release
+			// build doesn't see a scary message.
+			updaterState.updateAvailable = false;
+			updaterState.latestVersion = null;
+			updaterState.lastError = null;
+			return;
+		}
+		const remote = (await res.json()) as { version?: string; hash?: string };
+		if (remote.hash && remote.hash !== hash) {
+			updaterState.updateAvailable = true;
+			updaterState.latestVersion = remote.version ?? null;
+		} else {
+			updaterState.updateAvailable = false;
+			updaterState.latestVersion = null;
+		}
+		updaterState.lastError = null;
+	} catch (e) {
+		updaterState.lastError = e instanceof Error ? e.message : String(e);
+		updaterState.lastChecked = new Date().toISOString();
+	} finally {
+		updaterState.checking = false;
 	}
 }
 
@@ -235,10 +282,7 @@ export function defineFgltRpc() {
 				},
 
 				updaterCheckNow: async (): Promise<UpdaterStatus> => {
-					// Auto-update is disabled (see startUpdaterPolling); the UI
-					// surfaces the current version and a "Download latest from
-					// GitHub" link instead of an in-app check.
-					await refreshLocalVersion();
+					await checkRemoteVersion();
 					return { ...updaterState };
 				},
 
