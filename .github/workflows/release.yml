@@ -1,21 +1,16 @@
 name: Release
 
 # Triggered by pushing a tag like v0.1.0. Builds the Windows desktop
-# binary and uploads the installer + auto-update artifacts to the
-# GitHub release.
+# binary and uploads everything Electrobun emits in apps/desktop/artifacts/.
+#
+# Important: keep the original filenames. The auto-updater fetches
+# `<baseUrl>/<channel>-<platform>-<arch>-update.json` and downloads
+# the matching `<channel>-<platform>-<arch>-<AppName>.tar.zst`.
+# Renaming any of those breaks updates. Pattern + flow taken from
+# blackboardsh/audio-tts (a reference Electrobun app).
 #
 # Mac + Linux are out of scope until there's actually someone on those
-# platforms asking for a binary. Adding them later means restoring the
-# matrix and verifying Electrobun's output paths per platform.
-#
-# Electrobun's `bun run build` (which calls `electrobun build --env=stable`)
-# produces three top-level files in apps/desktop/build/stable-win-x64/:
-#   - "Find a Game Like That-Setup.exe"           (the installer)
-#   - "Find a Game Like That-Setup.tar.zst"       (auto-update payload)
-#   - "Find a Game Like That-Setup.metadata.json" (auto-update manifest)
-# We rename them to predictable kebab-case so URLs are stable across
-# tags and the desktop's auto-updater can hit
-# `releases/latest/download/fglt-win-x64-Setup.exe` etc.
+# platforms asking for a binary.
 
 on:
   push:
@@ -48,54 +43,25 @@ jobs:
         working-directory: apps/desktop
         run: bun run build
 
-      - name: Stage release artifacts
-        id: stage
+      - name: List artifacts
         shell: bash
         working-directory: apps/desktop
-        run: |
-          # Electrobun puts the user-facing artifacts in `artifacts/`
-          # with stable-win-x64 prefixes. The .zip there is a single
-          # self-contained installer (users only need this ONE file).
-          # The loose .tar.zst + update.json are for the auto-updater
-          # to find via direct URL.
-          if [ ! -d artifacts ]; then
-            echo "Expected artifacts/ but it doesn't exist. Listing build/:"
-            ls -la build/ || true
-            exit 1
-          fi
-          echo "Artifacts:"
-          ls -la artifacts
-          mkdir -p staged
-          cp artifacts/stable-win-x64-FindaGameLikeThat-Setup.zip \
-             staged/fglt-win-x64.zip
-          cp artifacts/stable-win-x64-FindaGameLikeThat.tar.zst \
-             staged/fglt-win-x64-update.tar.zst
-          cp artifacts/stable-win-x64-update.json \
-             staged/fglt-win-x64-update.json
-          echo "Staged for release:"
-          ls -la staged
+        run: ls -la artifacts/
 
-      - name: Upload to GitHub release
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/artifacts/*
+          fail_on_unmatched_files: true
+          body: |
+            Windows build for ${{ github.ref_name }}.
+
+            **Download `stable-win-x64-FindaGameLikeThat-Setup.zip`** —
+            single self-contained installer. Extract anywhere and
+            double-click the `.exe` inside.
+
+            The other two files (`*.tar.zst`, `*-update.json`) are
+            used by the in-app auto-updater; you don't need to
+            download them manually.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        working-directory: apps/desktop
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          NOTES="Windows build for $TAG.
-
-          **Download \`fglt-win-x64.zip\`** — single self-contained
-          installer. Extract anywhere and double-click the .exe inside.
-
-          The other two files (\`*-update.tar.zst\`, \`*-update.json\`)
-          are used by the in-app auto-updater; you don't need to
-          download them manually."
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-                 --title "$TAG" --notes "$NOTES"
-          gh release upload "$TAG" \
-            staged/fglt-win-x64.zip \
-            staged/fglt-win-x64-update.tar.zst \
-            staged/fglt-win-x64-update.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
