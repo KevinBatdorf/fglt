@@ -180,15 +180,30 @@ async function embedIcon(version: string): Promise<void> {
 		fail(`rcedit failed on launcher: ${e instanceof Error ? e.message : e}`);
 	}
 
-	// Also embed icon into bun.exe so any moment Windows shows a process
-	// icon for it (rare, but seen during the brief launch window) it
-	// matches the rest. Skip metadata — bun.exe is a vendored runtime
-	// and we shouldn't claim authorship of it.
+	// Also stamp bun.exe with our icon AND metadata. bun.exe owns the
+	// visible window (launcher.exe spawns it via FFI), so its PE
+	// metadata is what Windows uses for the taskbar pin name and
+	// "Open With" dialog labels. Without this stamp, pinning the app
+	// to the taskbar shows "Bun" / "Oven" — the unmodified Oven Inc
+	// runtime metadata. We're not claiming authorship of the Bun
+	// runtime itself, just relabeling OUR app's bundled copy.
 	const bun = join(STAGING, 'bin', 'bun.exe');
 	if (existsSync(bun)) {
 		try {
-			await rcedit(bun, { icon: ICON });
-			console.log(`  embedded icon → ${bun}`);
+			await rcedit(bun, {
+				icon: ICON,
+				'file-version': version,
+				'product-version': version,
+				'version-string': {
+					ProductName: 'Find a Game Like That',
+					FileDescription: 'Find a Game Like That',
+					CompanyName: 'Kevin Batdorf',
+					LegalCopyright: 'Kevin Batdorf',
+					OriginalFilename: 'bun.exe',
+					InternalName: 'Find a Game Like That',
+				},
+			});
+			console.log(`  embedded icon + metadata → ${bun}`);
 		} catch (e) {
 			fail(`rcedit failed on bun.exe: ${e instanceof Error ? e.message : e}`);
 		}
