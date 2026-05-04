@@ -16,10 +16,10 @@ import {
 } from 'electrobun/bun';
 import type {
 	DockerStatus,
+	FgltRPC,
 	InstalledIndex,
 	LaunchResult,
 	RefreshResult,
-	FgltRPC,
 	UpdaterStatus,
 } from '../shared/types';
 import {
@@ -51,11 +51,12 @@ export function registerMainWindow(win: BrowserWindow): void {
 
 // ----- Auto-updater state ------------------------------------------------
 //
-// We poll Electrobun's Updater on a 6h schedule (and once at startup), then
-// expose the latest snapshot to the React side via the `updaterStatus` RPC.
-// Long-lived in-process state is fine — only one window/process per user.
+// Manual updates only: download the latest installer from GitHub releases.
+// Electrobun's `Updater.checkForUpdate()` FFI fast-fails the bun process
+// (Windows exit 0xC0000409) when the manifest URL 404s, which happens for
+// anyone not on the latest tag. Until upstream is hardened we only read
+// the local version for the Settings → Updates panel.
 
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 const updaterState: UpdaterStatus = {
 	currentVersion: null,
 	updateAvailable: false,
@@ -74,51 +75,8 @@ async function refreshLocalVersion() {
 	}
 }
 
-async function pollOnce() {
-	if (updaterState.checking) return;
-	updaterState.checking = true;
-	try {
-		const channel = await Updater.localInfo.channel();
-		if (channel === 'dev') {
-			updaterState.lastError = null;
-			updaterState.lastChecked = new Date().toISOString();
-			return;
-		}
-		const result = await Updater.checkForUpdate();
-		updaterState.updateAvailable = !!result.updateAvailable;
-		updaterState.latestVersion = result.version ?? null;
-		updaterState.lastError = result.error || null;
-		updaterState.lastChecked = new Date().toISOString();
-		if (result.updateAvailable) {
-			// Pull the tarball / patches so applyUpdate() is fast when the
-			// user clicks Restart. downloadUpdate sets updateReady on success.
-			await Updater.downloadUpdate();
-			const after = Updater.updateInfo();
-			updaterState.updateReady = !!after?.updateReady;
-		} else {
-			updaterState.updateReady = false;
-		}
-	} catch (e) {
-		updaterState.lastError = e instanceof Error ? e.message : String(e);
-	} finally {
-		updaterState.checking = false;
-	}
-}
-
 export function startUpdaterPolling(): void {
-	// Only collect the local version for display in Settings → Updates.
-	// We deliberately DO NOT call pollOnce() here — Electrobun's
-	// Updater.checkForUpdate() FFI fast-fails the bun process (Windows
-	// exit code 0xC0000409) when the release manifest URL 404s, which
-	// instantly happens for any user whose installed version isn't the
-	// current latest tag. Until Electrobun's Updater is hardened, we
-	// ship without auto-update polling. Manual re-download is fine for
-	// v0.x; the existing Settings → Updates UI will report "Up to date"
-	// based on the never-set state.
 	void refreshLocalVersion();
-	// Re-enable when ready:
-	//   void refreshLocalVersion().then(() => pollOnce());
-	//   setInterval(pollOnce, UPDATE_CHECK_INTERVAL_MS);
 }
 
 // Path to the window-frame prefs file. Wired from index.ts at startup.
@@ -277,25 +235,15 @@ export function defineFgltRpc() {
 				},
 
 				updaterCheckNow: async (): Promise<UpdaterStatus> => {
-					await pollOnce();
+					// Auto-update is disabled (see startUpdaterPolling); the UI
+					// surfaces the current version and a "Download latest from
+					// GitHub" link instead of an in-app check.
+					await refreshLocalVersion();
 					return { ...updaterState };
 				},
 
-				updaterApply: async (): Promise<{ ok: boolean; error?: string }> => {
-					if (!updaterState.updateReady) {
-						return { ok: false, error: 'no-update-staged' };
-					}
-					try {
-						// Triggers the swap + relaunch. Process exits inside this call
-						// on success, so the response only matters on failure paths.
-						await Updater.applyUpdate();
-						return { ok: true };
-					} catch (e) {
-						return {
-							ok: false,
-							error: e instanceof Error ? e.message : String(e),
-						};
-					}
+				updaterApply: (): Promise<{ ok: boolean; error?: string }> => {
+					return Promise.resolve({ ok: false, error: 'auto-update-disabled' });
 				},
 
 				// ----- Docker stack control --------------------------------

@@ -15,6 +15,11 @@ your Steam, Epic, and GOG libraries. Search by what a game *feels* like
    [the latest release](https://github.com/KevinBatdorf/fglt/releases/latest)
    and launch it. First start takes ~3 min while it builds the backend
    image; subsequent launches are instant.
+
+   > **Note on the SmartScreen warning.** The installer is unsigned (code
+   > signing certs are paid; this is a hobby project). Windows will show
+   > "Microsoft Defender SmartScreen prevented an unrecognized app from
+   > starting." Click **More info → Run anyway** to proceed.
 3. Add your Steam credentials when the app prompts:
    - Steam API key — <https://steamcommunity.com/dev/apikey>
    - Steam ID (64-bit) — <https://steamid.io/>

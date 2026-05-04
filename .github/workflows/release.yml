@@ -1,16 +1,22 @@
 name: Release
 
-# Triggered by pushing a tag like v0.1.0. Builds the Windows desktop
-# binary and uploads everything Electrobun emits in apps/desktop/artifacts/.
+# Triggered by pushing a tag like v0.2.0. Builds the Windows desktop binary,
+# wraps it in an NSIS installer (proper Start Menu shortcut + Apps & Features
+# entry), and publishes everything to a GitHub release.
 #
-# Important: keep the original filenames. The auto-updater fetches
-# `<baseUrl>/<channel>-<platform>-<arch>-update.json` and downloads
-# the matching `<channel>-<platform>-<arch>-<AppName>.tar.zst`.
-# Renaming any of those breaks updates. Pattern + flow taken from
-# blackboardsh/audio-tts (a reference Electrobun app).
+# Two flavors of artifact ship in the same release:
 #
-# Mac + Linux are out of scope until there's actually someone on those
-# platforms asking for a binary.
+#   1. FindAGameLikeThat-<version>-win-x64-Setup.exe — NSIS installer.
+#      This is what users download. Per-user install (no UAC), creates
+#      Start Menu shortcuts, registers in Apps & Features, ships an
+#      uninstaller. Same model as Discord/Slack/VS Code User Installer.
+#
+#   2. stable-win-x64-FindaGameLikeThat.tar.zst + stable-win-x64-update.json
+#      — Electrobun's auto-updater payload. Filenames are load-bearing:
+#      Electrobun's Updater concatenates them into the manifest URL.
+#      Don't rename. (Auto-update polling is currently disabled in-app,
+#      but we publish the payload so re-enabling later is just a code
+#      change, not a release-pipeline change.)
 
 on:
   push:
@@ -23,7 +29,7 @@ permissions:
 jobs:
   build-windows:
     name: Build (win-x64)
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -39,9 +45,30 @@ jobs:
         working-directory: apps/desktop
         run: bun install
 
+      - name: Stamp version from tag
+        working-directory: apps/desktop
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: bun run stamp:version
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
       - name: Build desktop (icons + assets + vite + electrobun)
         working-directory: apps/desktop
         run: bun run build
+
+      - name: Build NSIS installer
+        working-directory: apps/desktop
+        run: bun run build:installer
+
+      # Drop the redundant Electrobun-emitted Setup.zip — the NSIS
+      # installer replaces it. Keep only the auto-updater payload
+      # (.tar.zst + update.json) and our new Setup.exe.
+      - name: Drop redundant Electrobun Setup.zip
+        shell: bash
+        working-directory: apps/desktop
+        run: rm -f artifacts/*-Setup.zip
 
       - name: List artifacts
         shell: bash
@@ -56,12 +83,11 @@ jobs:
           body: |
             Windows build for ${{ github.ref_name }}.
 
-            **Download `stable-win-x64-FindaGameLikeThat-Setup.zip`** —
-            single self-contained installer. Extract anywhere and
-            double-click the `.exe` inside.
+            **Download `FindAGameLikeThat-*-win-x64-Setup.exe`** and run it.
+            The installer creates a Start Menu shortcut and an entry in
+            Apps & Features. Per-user install — no admin/UAC required.
 
-            The other two files (`*.tar.zst`, `*-update.json`) are
-            used by the in-app auto-updater; you don't need to
-            download them manually.
+            The other two files (`*.tar.zst`, `*-update.json`) are used
+            by the in-app auto-updater; you don't need to download them.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

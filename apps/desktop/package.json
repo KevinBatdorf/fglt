@@ -13,7 +13,8 @@
 		"build:backend": "bun run scripts/bundle-backend.ts",
 		"build:assets": "bun run build:backend && cp ../../docker-compose.consumer.yml assets/docker-compose.consumer.yml",
 		"build": "bun run build:icons && bun run build:assets && vite build && electrobun build --env=stable",
-		"build:canary": "bun run build:icons && bun run build:assets && vite build && electrobun build --env=canary"
+		"build:installer": "bun run scripts/package-windows.ts",
+		"stamp:version": "bun run scripts/stamp-version.ts"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",

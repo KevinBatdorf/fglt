@@ -25,14 +25,8 @@ export default {
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ['dist/**'],
-		mac: {
-			bundleCEF: false,
-			icons: 'assets/icon.iconset',
-		},
-		linux: {
-			bundleCEF: false,
-			icon: 'assets/icon-512.png',
-		},
+		// Windows-only by design. Release pipeline wraps the build output in
+		// an NSIS installer; mac/linux scaffolding was removed deliberately.
 		win: {
 			bundleCEF: false,
 			icon: 'assets/icon.ico',
