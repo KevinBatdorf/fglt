@@ -322,7 +322,7 @@ function App() {
 	return (
 		<div className="relative h-screen bg-zinc-950 text-zinc-100 flex flex-col border border-zinc-700">
 			<ResizeEdges />
-			<TitleBar />
+			<TitleBar onOpenSettings={() => navigate({ kind: 'settings' })} />
 			<HealthBanner
 				docker={docker}
 				onOpenSetupGuide={() => navigate({ kind: 'setup_guide' })}

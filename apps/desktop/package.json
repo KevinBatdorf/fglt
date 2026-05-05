@@ -18,6 +18,7 @@
 		"stamp:version": "bun run scripts/stamp-version.ts"
 	},
 	"dependencies": {
+		"@fontsource-variable/fraunces": "^5.2.9",
 		"@fontsource-variable/inter": "^5.2.8",
 		"electrobun": "^1.0.0",
 		"react": "^18.3.1",

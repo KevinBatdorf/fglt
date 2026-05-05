@@ -12,7 +12,11 @@ import { rpc } from './lib/rpc';
  * acceptable for short drags, and the pointer is captured so the events
  * keep flowing even if the cursor outpaces the window.
  */
-export function TitleBar() {
+export function TitleBar({
+	onOpenSettings,
+}: {
+	onOpenSettings?: () => void;
+} = {}) {
 	const dragRef = useRef<HTMLDivElement>(null);
 
 	// OS-level window title (taskbar tooltip, Alt-Tab thumbnail, taskbar
@@ -125,7 +129,29 @@ export function TitleBar() {
 	}
 
 	return (
-		<div className="h-11 flex items-stretch shrink-0 bg-zinc-950 border-b border-zinc-800/80 select-none">
+		<div className="h-9 flex items-stretch shrink-0 bg-zinc-950 border-b border-zinc-900 select-none">
+			<button
+				type="button"
+				onClick={onOpenSettings}
+				aria-label="Settings"
+				className="w-9 flex items-center justify-center text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+			>
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden
+				>
+					<title>Settings</title>
+					<circle cx="12" cy="12" r="3" />
+					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+				</svg>
+			</button>
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: drag region for a frameless window must intercept pointer events */}
 			<div
 				ref={dragRef}
@@ -134,9 +160,9 @@ export function TitleBar() {
 				onPointerUp={endDrag}
 				onPointerCancel={endDrag}
 				onDoubleClick={onDoubleClick}
-				className="flex-1 flex items-center px-4 cursor-default"
+				className="flex-1 flex items-center cursor-default overflow-hidden"
 			>
-				<span className="text-[20px] italic font-semibold tracking-tight text-zinc-100 leading-none truncate">
+				<span className="font-display italic text-[20px] font-semibold tracking-tight text-zinc-400 whitespace-nowrap ml-1">
 					Find a Game Like That
 				</span>
 			</div>
@@ -232,7 +258,7 @@ function CtlButton({
 		<button
 			type="button"
 			onClick={onClick}
-			className={`w-12 flex items-center justify-center text-zinc-400 transition-colors ${hover}`}
+			className={`w-9 flex items-center justify-center text-zinc-400 transition-colors ${hover}`}
 			{...rest}
 		>
 			{children}

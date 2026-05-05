@@ -15,6 +15,13 @@ export default {
 					'Arial',
 					'sans-serif',
 				],
+				display: [
+					'"Fraunces Variable"',
+					'Fraunces',
+					'Georgia',
+					'"Times New Roman"',
+					'serif',
+				],
 			},
 		},
 	},
