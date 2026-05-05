@@ -1,5 +1,6 @@
+import { execSync, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { BrowserWindow, Updater } from 'electrobun/bun';
 import { dockerStatus, rebuildBackend, startBackend } from './docker';
 import {
@@ -8,6 +9,48 @@ import {
 	setPrefsPath,
 	startUpdaterPolling,
 } from './rpc';
+
+// If bun.exe is launched without launcher.exe as our parent process —
+// most commonly when the user pinned the app to the taskbar (Windows
+// pins the visible window's owning process, which is bun.exe) — the
+// FFI bridge to the native window host is never set up. Initializing
+// `BrowserWindow` then crashes with `bridge.requestHost is null`.
+//
+// Detect this case and re-launch via launcher.exe before doing any
+// Electrobun work. Windows-only.
+if (process.platform === 'win32') {
+	try {
+		const ppidStr = String(process.ppid);
+		const csv = execSync(`tasklist /FI "PID eq ${ppidStr}" /FO CSV /NH`, {
+			encoding: 'utf8',
+			timeout: 2000,
+		});
+		const parentName = (csv.split(',')[0] || '')
+			.replace(/"/g, '')
+			.toLowerCase();
+		const ourBin = process.argv0 || '';
+		if (
+			basename(ourBin).toLowerCase().endsWith('bun.exe') &&
+			parentName !== 'launcher.exe'
+		) {
+			const launcherPath = join(dirname(ourBin), 'launcher.exe');
+			console.warn(
+				`[fglt] bun.exe launched without launcher (parent=${parentName}); relaunching via ${launcherPath}`,
+			);
+			const child = spawn(launcherPath, [], {
+				detached: true,
+				stdio: 'ignore',
+			});
+			child.unref();
+			process.exit(0);
+		}
+	} catch (e) {
+		// Best effort. If the check itself errors we fall through and
+		// let Electrobun proceed normally — worst case is the original
+		// crash; we haven't made anything worse.
+		console.warn('[fglt] parent-process check failed:', e);
+	}
+}
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
