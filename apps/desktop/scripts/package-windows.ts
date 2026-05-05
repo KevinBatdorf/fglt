@@ -28,11 +28,26 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // @ts-expect-error — rcedit ships JS with no bundled .d.ts on this version
 import rcedit from 'rcedit';
+
+// Replace bin/bun.exe with bin/fgl.exe. The launcher binary spawns
+// "bun.exe" by name; we patch the literal string in launcher.exe with
+// the new name. Has to be the same length as "bun.exe" (7 chars) to
+// keep the binary's offsets intact. fgl = Find a Game Like.
+const RUNTIME_EXE_NAME = 'fgl.exe';
 
 const ROOT = join(import.meta.dir, '..');
 const BUILD = join(ROOT, 'build', 'stable-win-x64');
@@ -147,12 +162,32 @@ function stage(): void {
 	const sz = statSync(launcherExe).size;
 	console.log(`  staged real launcher.exe (${sz} bytes)`);
 
-	// Note: we considered renaming bin/bun.exe to break the name
-	// collision with users' globally-installed Bun. Skipped because
-	// Electrobun's launcher binary spawns "bun.exe" by name from
-	// compiled native code that isn't patchable from JS. Mitigation
-	// for the wait-loop hang lives in our custom updater (which
-	// bypasses Electrobun's update.bat entirely).
+	// Patch launcher.exe to spawn "fgl.exe" instead of "bun.exe", then
+	// rename the file. RUNTIME_EXE_NAME is constrained to 7 chars so the
+	// in-binary string can be replaced byte-for-byte without shifting
+	// any pointers in the PE.
+	if (RUNTIME_EXE_NAME.length !== 'bun.exe'.length) {
+		fail(
+			`RUNTIME_EXE_NAME must be exactly 7 chars to match "bun.exe"; got "${RUNTIME_EXE_NAME}" (${RUNTIME_EXE_NAME.length})`,
+		);
+	}
+	const launcherBuf = readFileSync(launcherExe);
+	const oldBytes = Buffer.from('bun.exe\0', 'utf8');
+	const newBytes = Buffer.from(`${RUNTIME_EXE_NAME}\0`, 'utf8');
+	const offset = launcherBuf.indexOf(oldBytes);
+	if (offset === -1)
+		fail('"bun.exe\\0" not found in launcher.exe — Electrobun layout changed?');
+	newBytes.copy(launcherBuf, offset);
+	writeFileSync(launcherExe, launcherBuf);
+	console.log(
+		`  patched launcher.exe @${offset}: bun.exe → ${RUNTIME_EXE_NAME}`,
+	);
+
+	const oldBun = join(STAGING, 'bin', 'bun.exe');
+	const newBun = join(STAGING, 'bin', RUNTIME_EXE_NAME);
+	if (!existsSync(oldBun)) fail(`bun.exe not found at ${oldBun}`);
+	renameSync(oldBun, newBun);
+	console.log(`  renamed bin/bun.exe → bin/${RUNTIME_EXE_NAME}`);
 }
 
 async function embedIcon(version: string): Promise<void> {
@@ -182,14 +217,14 @@ async function embedIcon(version: string): Promise<void> {
 		fail(`rcedit failed on launcher: ${e instanceof Error ? e.message : e}`);
 	}
 
-	// Stamp bun.exe with our icon + metadata. It owns the visible
-	// window (launcher.exe spawns it via FFI), so its PE metadata is
-	// what Windows uses for the taskbar pin name and "Open With"
-	// dialog labels.
-	const bun = join(STAGING, 'bin', 'bun.exe');
-	if (existsSync(bun)) {
+	// Stamp the renamed runtime (fgl.exe) with our icon + metadata.
+	// It owns the visible window (launcher.exe spawns it via FFI),
+	// so its PE metadata is what Windows uses for the taskbar pin
+	// name and "Open With" dialog labels.
+	const runtime = join(STAGING, 'bin', RUNTIME_EXE_NAME);
+	if (existsSync(runtime)) {
 		try {
-			await rcedit(bun, {
+			await rcedit(runtime, {
 				icon: ICON,
 				'file-version': version,
 				'product-version': version,
@@ -198,13 +233,13 @@ async function embedIcon(version: string): Promise<void> {
 					FileDescription: 'Find a Game Like That',
 					CompanyName: 'Kevin Batdorf',
 					LegalCopyright: 'Kevin Batdorf',
-					OriginalFilename: 'bun.exe',
+					OriginalFilename: RUNTIME_EXE_NAME,
 					InternalName: 'Find a Game Like That',
 				},
 			});
-			console.log(`  embedded icon + metadata → ${bun}`);
+			console.log(`  embedded icon + metadata → ${runtime}`);
 		} catch (e) {
-			fail(`rcedit failed on bun.exe: ${e instanceof Error ? e.message : e}`);
+			fail(`rcedit failed on ${runtime}: ${e instanceof Error ? e.message : e}`);
 		}
 	}
 }

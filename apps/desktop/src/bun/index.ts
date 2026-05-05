@@ -28,7 +28,10 @@ if (process.platform === 'win32') {
 			.toLowerCase();
 		const ourBin = process.argv0 || '';
 		const ourBase = basename(ourBin).toLowerCase();
-		if (ourBase === 'bun.exe' && parentName !== 'launcher.exe') {
+		// Match either "fgl.exe" (after rename) or "bun.exe" (older
+		// installs / dev mode).
+		const looksLikeRuntime = ourBase === 'fgl.exe' || ourBase === 'bun.exe';
+		if (looksLikeRuntime && parentName !== 'launcher.exe') {
 			const launcherPath = join(dirname(ourBin), 'launcher.exe');
 			console.warn(
 				`[fglt] runtime launched without launcher (parent=${parentName}); relaunching via ${launcherPath}`,

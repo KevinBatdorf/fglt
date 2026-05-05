@@ -83,6 +83,11 @@ Section "Install"
   ; renamed bin/launcher → bin/launcher.exe and embedded the app icon.
   File /r "${BUILD_DIR}\*.*"
 
+  ; Clean up the legacy bun.exe runtime from pre-fgl.exe installs in
+  ; case the prior RMDir couldn't grab it (file locked by an exiting
+  ; process). REBOOTOK schedules deletion on next reboot if needed.
+  Delete /REBOOTOK "$INSTDIR\bin\bun.exe"
+
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Start Menu shortcuts

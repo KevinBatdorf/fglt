@@ -288,12 +288,12 @@ export function defineFgltRpc() {
 						return { ok: false, error: 'no-update-staged' };
 					}
 					try {
-						// Download the published Setup.exe to a temp file, spawn
-						// it silent, then quit so it can replace files in place.
-						// NSIS auto-launches the new launcher.exe at the end of
-						// silent install. We deliberately bypass Electrobun's
-						// own applyUpdate (writes to canonical path, hangs the
-						// wait loop on globally-installed bun.exe).
+						// Download the published Setup.exe to a temp file, then
+						// spawn a tiny .bat that waits 2s before running it.
+						// The wait gives our own bun/fgl/launcher processes
+						// time to fully exit and release file locks before
+						// NSIS tries to RMDir $INSTDIR. NSIS auto-launches
+						// the new launcher at the end of silent install.
 						const baseUrl = await Updater.localInfo.baseUrl();
 						const setupUrl = `${baseUrl.replace(/\/+$/, '')}/${SETUP_EXE_NAME}`;
 						const res = await fetch(setupUrl);
@@ -304,17 +304,28 @@ export function defineFgltRpc() {
 							};
 						}
 						const buf = Buffer.from(await res.arrayBuffer());
-						const setupPath = join(
-							tmpdir(),
-							`fglt-update-${Date.now()}.exe`,
-						);
+						const stamp = Date.now();
+						const setupPath = join(tmpdir(), `fglt-update-${stamp}.exe`);
+						const batPath = join(tmpdir(), `fglt-update-${stamp}.bat`);
 						await writeFile(setupPath, buf);
-						const child = spawn(setupPath, ['/S'], {
+						await writeFile(
+							batPath,
+							[
+								'@echo off',
+								// Wait ~2s for our app processes to fully exit
+								'timeout /t 2 /nobreak >nul',
+								`"${setupPath}" /S`,
+								// Self-delete after running
+								'del "%~f0"',
+								'',
+							].join('\r\n'),
+						);
+						const child = spawn('cmd', ['/c', batPath], {
 							detached: true,
 							stdio: 'ignore',
+							windowsHide: true,
 						});
 						child.unref();
-						// Quit shortly so the installer can overwrite files.
 						setTimeout(() => process.exit(0), 200);
 						return { ok: true };
 					} catch (e) {
