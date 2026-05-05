@@ -8,6 +8,10 @@
  *      simple — disks are fast and the user can re-trigger from the UI)
  *   3. refreshGame — proxy through to the API's /games/:appid/refresh
  */
+import { spawn } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
 	BrowserView,
 	type BrowserWindow,
@@ -51,13 +55,21 @@ export function registerMainWindow(win: BrowserWindow): void {
 
 // ----- Auto-updater state ------------------------------------------------
 //
-// Re-enabled. Uses Electrobun's full Updater pipeline: checkForUpdate
-// fetches the manifest, downloadUpdate pulls the new tar.zst (or a
-// patch chain) into self-extraction, applyUpdate writes a Windows
-// batch script that moves the new app over the running one and
-// relaunches. Poll once at startup, then every 6h.
+// Hybrid approach: use Electrobun's `Updater.checkForUpdate` to read
+// the published manifest (plain fetch, safe), but DO NOT use its
+// `downloadUpdate` / `applyUpdate` path on Windows. Those generate an
+// `update.bat` that (a) waits in a loop for any `bun.exe` to exit,
+// which never happens if the user has Bun installed globally for
+// other projects, and (b) writes files to Electrobun's canonical
+// path, which doesn't match where our NSIS installer puts the app.
+//
+// Instead, when the user clicks "Restart to apply" we download the
+// official NSIS `Setup.exe` from the GitHub release, spawn it silent,
+// and quit so it can replace files in place. NSIS auto-launches
+// launcher.exe at the end of the silent install.
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const SETUP_EXE_NAME = 'FindAGameLikeThat-Setup.exe';
 
 const updaterState: UpdaterStatus = {
 	currentVersion: null,
@@ -88,20 +100,16 @@ async function pollOnce() {
 			updaterState.lastChecked = new Date().toISOString();
 			return;
 		}
+		// Read remote manifest only — do NOT call Updater.downloadUpdate
+		// (which would pull a tarball into Electrobun's canonical path
+		// and stage an applyUpdate batch we don't want). The actual
+		// install happens in updaterApply via the NSIS installer.
 		const result = await Updater.checkForUpdate();
 		updaterState.lastChecked = new Date().toISOString();
 		updaterState.updateAvailable = !!result.updateAvailable;
 		updaterState.latestVersion = result.version ?? null;
 		updaterState.lastError = result.error || null;
-		if (result.updateAvailable) {
-			// Pre-download so applyUpdate is fast when the user clicks
-			// Restart. downloadUpdate sets updateInfo.updateReady on success.
-			await Updater.downloadUpdate();
-			const after = Updater.updateInfo();
-			updaterState.updateReady = !!after?.updateReady;
-		} else {
-			updaterState.updateReady = false;
-		}
+		updaterState.updateReady = !!result.updateAvailable;
 	} catch (e) {
 		updaterState.lastError = e instanceof Error ? e.message : String(e);
 		updaterState.lastChecked = new Date().toISOString();
@@ -280,9 +288,34 @@ export function defineFgltRpc() {
 						return { ok: false, error: 'no-update-staged' };
 					}
 					try {
-						// Triggers the swap + relaunch. Process exits inside this
-						// call on success, so the response only matters on failures.
-						await Updater.applyUpdate();
+						// Download the published Setup.exe to a temp file, spawn
+						// it silent, then quit so it can replace files in place.
+						// NSIS auto-launches the new launcher.exe at the end of
+						// silent install. We deliberately bypass Electrobun's
+						// own applyUpdate (writes to canonical path, hangs the
+						// wait loop on globally-installed bun.exe).
+						const baseUrl = await Updater.localInfo.baseUrl();
+						const setupUrl = `${baseUrl.replace(/\/+$/, '')}/${SETUP_EXE_NAME}`;
+						const res = await fetch(setupUrl);
+						if (!res.ok) {
+							return {
+								ok: false,
+								error: `download failed: HTTP ${res.status}`,
+							};
+						}
+						const buf = Buffer.from(await res.arrayBuffer());
+						const setupPath = join(
+							tmpdir(),
+							`fglt-update-${Date.now()}.exe`,
+						);
+						await writeFile(setupPath, buf);
+						const child = spawn(setupPath, ['/S'], {
+							detached: true,
+							stdio: 'ignore',
+						});
+						child.unref();
+						// Quit shortly so the installer can overwrite files.
+						setTimeout(() => process.exit(0), 200);
 						return { ok: true };
 					} catch (e) {
 						return {

@@ -10,14 +10,12 @@ import {
 	startUpdaterPolling,
 } from './rpc';
 
-// If bun.exe is launched without launcher.exe as our parent process —
-// most commonly when the user pinned the app to the taskbar (Windows
-// pins the visible window's owning process, which is bun.exe) — the
-// FFI bridge to the native window host is never set up. Initializing
-// `BrowserWindow` then crashes with `bridge.requestHost is null`.
-//
-// Detect this case and re-launch via launcher.exe before doing any
-// Electrobun work. Windows-only.
+// If our runtime binary is launched without launcher.exe as the
+// parent (most commonly when Windows pins the visible window's
+// owning process — that's our runtime, not launcher), the FFI
+// bridge to the native window host is never set up and
+// `BrowserWindow` init crashes with `bridge.requestHost is null`.
+// Detect this and re-launch via launcher.exe.
 if (process.platform === 'win32') {
 	try {
 		const ppidStr = String(process.ppid);
@@ -29,13 +27,11 @@ if (process.platform === 'win32') {
 			.replace(/"/g, '')
 			.toLowerCase();
 		const ourBin = process.argv0 || '';
-		if (
-			basename(ourBin).toLowerCase().endsWith('bun.exe') &&
-			parentName !== 'launcher.exe'
-		) {
+		const ourBase = basename(ourBin).toLowerCase();
+		if (ourBase === 'bun.exe' && parentName !== 'launcher.exe') {
 			const launcherPath = join(dirname(ourBin), 'launcher.exe');
 			console.warn(
-				`[fglt] bun.exe launched without launcher (parent=${parentName}); relaunching via ${launcherPath}`,
+				`[fglt] runtime launched without launcher (parent=${parentName}); relaunching via ${launcherPath}`,
 			);
 			const child = spawn(launcherPath, [], {
 				detached: true,

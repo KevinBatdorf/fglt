@@ -146,6 +146,13 @@ function stage(): void {
 		fail(`real launcher.exe missing from extracted bundle at ${launcherExe}`);
 	const sz = statSync(launcherExe).size;
 	console.log(`  staged real launcher.exe (${sz} bytes)`);
+
+	// Note: we considered renaming bin/bun.exe to break the name
+	// collision with users' globally-installed Bun. Skipped because
+	// Electrobun's launcher binary spawns "bun.exe" by name from
+	// compiled native code that isn't patchable from JS. Mitigation
+	// for the wait-loop hang lives in our custom updater (which
+	// bypasses Electrobun's update.bat entirely).
 }
 
 async function embedIcon(version: string): Promise<void> {
@@ -175,13 +182,10 @@ async function embedIcon(version: string): Promise<void> {
 		fail(`rcedit failed on launcher: ${e instanceof Error ? e.message : e}`);
 	}
 
-	// Also stamp bun.exe with our icon AND metadata. bun.exe owns the
-	// visible window (launcher.exe spawns it via FFI), so its PE
-	// metadata is what Windows uses for the taskbar pin name and
-	// "Open With" dialog labels. Without this stamp, pinning the app
-	// to the taskbar shows "Bun" / "Oven" — the unmodified Oven Inc
-	// runtime metadata. We're not claiming authorship of the Bun
-	// runtime itself, just relabeling OUR app's bundled copy.
+	// Stamp bun.exe with our icon + metadata. It owns the visible
+	// window (launcher.exe spawns it via FFI), so its PE metadata is
+	// what Windows uses for the taskbar pin name and "Open With"
+	// dialog labels.
 	const bun = join(STAGING, 'bin', 'bun.exe');
 	if (existsSync(bun)) {
 		try {

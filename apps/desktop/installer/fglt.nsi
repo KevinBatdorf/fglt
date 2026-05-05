@@ -114,6 +114,15 @@ Section "Install"
   ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" "$0"
+
+  ; Silent-mode auto-launch. The in-app updater downloads Setup.exe and
+  ; runs us with /S; once we've installed the new files we want the new
+  ; launcher to start up so the user doesn't have to manually relaunch.
+  ; In non-silent (interactive) mode the MUI_FINISHPAGE_RUN button gives
+  ; the user the same option, so this Exec only fires under /S.
+  ${If} ${Silent}
+    Exec '"$INSTDIR\bin\launcher.exe"'
+  ${EndIf}
 SectionEnd
 
 ; Uninstall init — when uninstall.exe is launched from $INSTDIR, copy it
