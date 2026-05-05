@@ -10,6 +10,35 @@ import {
 	startUpdaterPolling,
 } from './rpc';
 
+// Stable AppUserModelID — must match the AUMID stamped on the Start
+// Menu shortcut by the NSIS installer. Tells Windows "this app's
+// identity is X" so taskbar pinning groups by AUMID instead of by the
+// bun runtime's exe path.
+const APP_AUMID = 'KevinBatdorf.FindAGameLikeThat';
+
+if (process.platform === 'win32') {
+	try {
+		const { dlopen, FFIType, ptr } = await import('bun:ffi');
+		const shell32 = dlopen('shell32.dll', {
+			SetCurrentProcessExplicitAppUserModelID: {
+				args: [FFIType.ptr],
+				returns: FFIType.i32,
+			},
+		});
+		// UTF-16LE wide string with null terminator.
+		const wide = Buffer.from(`${APP_AUMID}\0`, 'utf16le');
+		const hr =
+			shell32.symbols.SetCurrentProcessExplicitAppUserModelID(ptr(wide));
+		if (hr !== 0) {
+			console.warn(
+				`[fglt] SetCurrentProcessExplicitAppUserModelID HRESULT 0x${hr.toString(16)}`,
+			);
+		}
+	} catch (e) {
+		console.warn('[fglt] AUMID setup failed:', e);
+	}
+}
+
 // If our runtime binary is launched without launcher.exe as the
 // parent (most commonly when Windows pins the visible window's
 // owning process — that's our runtime, not launcher), the FFI

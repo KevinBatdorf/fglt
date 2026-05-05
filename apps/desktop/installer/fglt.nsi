@@ -24,6 +24,14 @@
   !define URL "https://github.com/KevinBatdorf/fglt"
 !endif
 
+; Stable AppUserModelID — set on the Start Menu shortcut at install
+; time AND set on the running process at startup. Together these tell
+; Windows "this app's identity is X", so taskbar pins / Alt-Tab /
+; jump lists track the app by stable id instead of by the bun runtime
+; exe path that Windows would otherwise pick (which would pin a bare
+; fgl.exe — running it directly just prints Bun's CLI help).
+!define APP_AUMID "KevinBatdorf.FindAGameLikeThat"
+
 Name "Find a Game Like That"
 OutFile "${OUTPUT_DIR}\${OUTPUT_NAME}"
 
@@ -66,6 +74,9 @@ VIAddVersionKey "LegalCopyright"  "${PUBLISHER}"
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install"
+  ; $PLUGINSDIR is an auto-cleaned temp dir for one-shot helpers.
+  InitPluginsDir
+
   ; Wipe app files at $INSTDIR (clean reinstall semantics).
   RMDir /r "$INSTDIR"
 
@@ -96,6 +107,16 @@ Section "Install"
     "$INSTDIR\bin\launcher.exe" "" "$INSTDIR\bin\launcher.exe" 0
   CreateShortcut "$SMPROGRAMS\Find a Game Like That\Uninstall.lnk" \
     "$INSTDIR\uninstall.exe"
+
+  ; Stamp APP_AUMID onto the launch shortcut. Without this, when the
+  ; user pins from the running window, Windows captures the runtime
+  ; exe path (fgl.exe) instead of the launcher. fgl.exe is just Bun
+  ; with no args → prints CLI help and exits.
+  SetOutPath "$PLUGINSDIR"
+  File "/oname=set-aumid.ps1" "${__FILEDIR__}\set-shortcut-aumid.ps1"
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\set-aumid.ps1" -LnkPath "$SMPROGRAMS\Find a Game Like That\Find a Game Like That.lnk" -Aumid "${APP_AUMID}"'
+  Pop $0
+  SetOutPath "$INSTDIR"
 
   ; Apps & Features registration
   WriteRegStr HKCU "Software\FindAGameLikeThat" "InstallDir" "$INSTDIR"
