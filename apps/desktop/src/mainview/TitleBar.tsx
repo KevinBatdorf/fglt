@@ -125,7 +125,7 @@ export function TitleBar() {
 	}
 
 	return (
-		<div className="h-8 flex items-stretch shrink-0 bg-zinc-950 border-b border-zinc-800/80 select-none">
+		<div className="h-11 flex items-stretch shrink-0 bg-zinc-950 border-b border-zinc-800/80 select-none">
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: drag region for a frameless window must intercept pointer events */}
 			<div
 				ref={dragRef}
@@ -134,10 +134,10 @@ export function TitleBar() {
 				onPointerUp={endDrag}
 				onPointerCancel={endDrag}
 				onDoubleClick={onDoubleClick}
-				className="flex-1 flex items-center px-3 gap-2 cursor-default"
+				className="flex-1 flex items-center px-4 cursor-default"
 			>
-				<span className="text-[11px] tracking-wide text-zinc-500 font-medium truncate">
-					Find a game like that
+				<span className="text-[20px] italic font-semibold tracking-tight text-zinc-100 leading-none truncate">
+					Find a Game Like That
 				</span>
 			</div>
 			<WindowControls
