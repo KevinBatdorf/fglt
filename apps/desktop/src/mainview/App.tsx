@@ -81,11 +81,28 @@ function App() {
 	const dockerLocked = docker !== null && docker.kind !== 'running';
 	const locked = !apiReachable || requiredMissing.length > 0 || dockerLocked;
 	const mainRef = useRef<HTMLElement>(null);
+	const scrollPositions = useRef<Map<string, number>>(new Map());
+	const pendingScrollRestore = useRef<number | null>(null);
 
-	// Reset scroll on every view change so search results / list switches
-	// don't leave the user mid-page.
+	// Reset scroll on every view change. When navigating back, restore the
+	// saved position instead. Views re-fetch data on mount (showing a brief
+	// loading state), so we apply the position immediately AND again after
+	// 200ms to catch the render that follows the data arriving.
 	useEffect(() => {
-		mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+		if (pendingScrollRestore.current !== null) {
+			const pos = pendingScrollRestore.current;
+			pendingScrollRestore.current = null;
+			const el = mainRef.current;
+			if (!el) return;
+			requestAnimationFrame(() => {
+				el.scrollTop = pos;
+				setTimeout(() => {
+					el.scrollTop = pos;
+				}, 200);
+			});
+		} else {
+			mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+		}
 	}, [view]);
 
 	const refreshStats = useCallback(() => {
@@ -180,6 +197,12 @@ function App() {
 
 	const navigate = useCallback(
 		(next: View) => {
+			if (mainRef.current) {
+				scrollPositions.current.set(
+					JSON.stringify(view),
+					mainRef.current.scrollTop,
+				);
+			}
 			setHistory((h) => [...h, view]);
 			setView(next);
 			if (next.kind === 'search') setQuery(next.query);
@@ -216,6 +239,10 @@ function App() {
 		setHistory((h) => {
 			if (h.length === 0) return h;
 			const prev = h[h.length - 1];
+			const savedPos = scrollPositions.current.get(JSON.stringify(prev));
+			if (savedPos !== undefined) {
+				pendingScrollRestore.current = savedPos;
+			}
 			setView(prev);
 			if (prev.kind === 'search') setQuery(prev.query);
 			else setQuery('');
