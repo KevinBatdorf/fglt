@@ -175,6 +175,8 @@ interface Props {
 	onOpenList?: (slug: string) => void;
 	/** Called with a fresh InstalledIndex whenever polling detects a change. */
 	onInstalledRefresh?: (idx: InstalledIndex) => void;
+	/** Navigate to the VR Games filter view — used by the hero VR badge. */
+	onOpenVR?: () => void;
 }
 
 export function GameDetail({
@@ -187,6 +189,7 @@ export function GameDetail({
 	onSearch,
 	onOpenList,
 	onInstalledRefresh,
+	onOpenVR,
 }: Props) {
 	const [game, setGame] = useState<GameDetailType | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -361,11 +364,21 @@ export function GameDetail({
 						</h2>
 						<div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200/90 drop-shadow">
 							{releaseYear && <span>{releaseYear}</span>}
-							{isVR && (
-								<span className="px-1.5 py-0.5 text-[11px] font-bold bg-violet-700/70 text-violet-100 rounded border border-violet-500/40 uppercase tracking-wider">
-									VR
-								</span>
-							)}
+							{isVR &&
+								(onOpenVR ? (
+									<button
+										type="button"
+										onClick={onOpenVR}
+										title="Browse all VR Games"
+										className="px-1.5 py-0.5 text-[11px] font-bold bg-violet-700/70 hover:bg-violet-600/80 text-violet-100 rounded border border-violet-500/40 uppercase tracking-wider transition-colors cursor-pointer"
+									>
+										VR
+									</button>
+								) : (
+									<span className="px-1.5 py-0.5 text-[11px] font-bold bg-violet-700/70 text-violet-100 rounded border border-violet-500/40 uppercase tracking-wider">
+										VR
+									</span>
+								))}
 							{game?.developers && game.developers.length > 0 && (
 								<>
 									<span className="opacity-50">·</span>
