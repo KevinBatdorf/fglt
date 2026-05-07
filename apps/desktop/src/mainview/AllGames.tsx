@@ -11,7 +11,8 @@ type Preset =
 	| 'unplayed'
 	| 'recently_played'
 	| 'recently_added'
-	| 'weekend';
+	| 'weekend'
+	| 'vr';
 type SortKey =
 	| 'name'
 	| 'playtime'
@@ -34,6 +35,7 @@ const DEFAULT_SORT: Record<Preset, SortKey> = {
 	recently_played: 'recently_played',
 	recently_added: 'recently_added',
 	weekend: 'rating',
+	vr: 'rating',
 };
 
 // Sort options each preset actually supports.
@@ -43,6 +45,7 @@ const SORT_OPTIONS: Record<Preset, SortKey[]> = {
 	recently_played: ['recently_played', 'playtime', 'rating', 'name', 'year'],
 	recently_added: ['recently_added', 'name', 'year', 'rating'],
 	weekend: ['rating', 'hltb_short', 'name', 'year'],
+	vr: ['rating', 'name', 'year'],
 };
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -61,6 +64,7 @@ const PRESET_TITLE: Record<Preset, string | null> = {
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
 	weekend: 'Weekend games',
+	vr: 'VR Games',
 };
 
 /**
@@ -76,6 +80,7 @@ const PRESET_BLURB: Record<Preset, string | null> = {
 		'Games added to your library after the initial setup sync, within the last few months. Configure the window in Settings.',
 	weekend:
 		'Games with a HowLongToBeat main story under 5 hours. Populated as the enricher fetches HLTB data for each game (HLTB API can be flaky — empty here means the data isn’t in yet for any of your games).',
+	vr: 'Games tagged VR by the Steam community.',
 };
 
 export function AllGames({
@@ -95,7 +100,7 @@ export function AllGames({
 
 	useEffect(() => {
 		setSort(DEFAULT_SORT[preset]);
-		setTag('');
+		setTag(preset === 'vr' ? 'VR' : '');
 		setFilter('');
 	}, [preset]);
 
@@ -116,6 +121,7 @@ export function AllGames({
 			params.within_months = getRecentlyAddedMonths();
 		}
 		if (preset === 'weekend') params.max_hltb_main = 5;
+		if (preset === 'vr') params.tag = 'VR';
 		if (tag) params.tag = tag;
 		api
 			.library(params, ctrl.signal)

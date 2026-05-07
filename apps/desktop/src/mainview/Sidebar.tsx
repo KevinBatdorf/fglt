@@ -25,7 +25,8 @@ export type View =
 				| 'unplayed'
 				| 'recently_played'
 				| 'recently_added'
-				| 'weekend';
+				| 'weekend'
+				| 'vr';
 	  }
 	| { kind: 'discover'; what: 'trending' | 'random' | 'recommended' }
 	| { kind: 'platform'; platform: Platform }
@@ -375,6 +376,15 @@ export function Sidebar({
 							)}
 							icon="🆕"
 							label="Recently added"
+						/>
+					)}
+					{vis.vr && (
+						<Item
+							active={view.kind === 'filter' && view.what === 'vr'}
+							onClick={() => onNavigate({ kind: 'filter', what: 'vr' })}
+							onContextMenu={navHideContextMenu('vr', 'VR Games', setNavItemMenu)}
+							icon="🥽"
+							label="VR Games"
 						/>
 					)}
 					{vis.recently_viewed && (
