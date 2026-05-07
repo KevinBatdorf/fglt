@@ -46,6 +46,7 @@ export type SidebarKey =
 	| 'random'
 	| 'unplayed'
 	| 'weekend'
+	| 'vr'
 	| 'recently_played'
 	| 'recently_added'
 	| 'platforms'
@@ -61,6 +62,7 @@ export const SIDEBAR_DEFAULT: SidebarVisibility = {
 	random: true,
 	unplayed: true,
 	weekend: true,
+	vr: true,
 	recently_played: true,
 	recently_added: true,
 	platforms: true,
@@ -75,6 +77,7 @@ export const SIDEBAR_LABELS: Record<SidebarKey, string> = {
 	random: 'Random',
 	unplayed: 'Unplayed',
 	weekend: 'Weekend games',
+	vr: 'VR Games',
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
 	platforms: 'Platforms section',

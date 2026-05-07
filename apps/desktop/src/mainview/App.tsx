@@ -377,6 +377,7 @@ function App() {
 							requiredMissing={requiredMissing}
 							docker={docker}
 							onOpenSettings={() => navigate({ kind: 'settings' })}
+							onInstalledRefresh={(idx) => setInstalled(idx)}
 						/>
 					</main>
 				</div>
@@ -391,6 +392,7 @@ const PRESET_LABEL: Record<string, string> = {
 	recently_played: 'Recently played',
 	recently_added: 'Recently added',
 	weekend: 'Weekend games',
+	vr: 'VR Games',
 };
 
 const DISCOVER_LABEL: Record<string, string> = {
@@ -586,6 +588,7 @@ function MainView({
 	requiredMissing,
 	docker,
 	onOpenSettings,
+	onInstalledRefresh,
 }: {
 	view: View;
 	stats: Stats | null;
@@ -600,6 +603,7 @@ function MainView({
 	requiredMissing: string[];
 	docker: DockerStatus | null;
 	onOpenSettings: () => void;
+	onInstalledRefresh: (idx: InstalledIndex) => void;
 }) {
 	if (view.kind === 'home')
 		return (
@@ -620,6 +624,7 @@ function MainView({
 				onLoaded={onDetailLoaded}
 				onSearch={(q) => onPickVibe(q)}
 				onOpenList={onOpenList}
+				onInstalledRefresh={onInstalledRefresh}
 			/>
 		);
 	if (view.kind === 'search')

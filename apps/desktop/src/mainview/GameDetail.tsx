@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { InstalledIndex, Platform } from '../shared/types';
 import { GameImage } from './GameImage';
 import { LoadingState } from './LoadingState';
@@ -173,6 +173,8 @@ interface Props {
 	onSearch?: (query: string) => void;
 	/** Open a list view by slug — called when a green list pill is clicked. */
 	onOpenList?: (slug: string) => void;
+	/** Called with a fresh InstalledIndex whenever polling detects a change. */
+	onInstalledRefresh?: (idx: InstalledIndex) => void;
 }
 
 export function GameDetail({
@@ -184,9 +186,16 @@ export function GameDetail({
 	onLoaded,
 	onSearch,
 	onOpenList,
+	onInstalledRefresh,
 }: Props) {
 	const [game, setGame] = useState<GameDetailType | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const installPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	useEffect(() => {
+		return () => {
+			if (installPollRef.current !== null) clearInterval(installPollRef.current);
+		};
+	}, []);
 	const [vectorSimilar, setVectorSimilar] = useState<LibraryGame[] | null>(
 		null,
 	);
@@ -271,6 +280,28 @@ export function GameDetail({
 						? `com.epicgames.launcher://apps/${externalId}?action=install&silent=true`
 						: `goggalaxy://openGameView/${externalId}`;
 			await rpc.request.openUrl({ url: installUri });
+
+			// Poll for install completion so the button flips to "Launch" automatically.
+			if (installPollRef.current !== null) clearInterval(installPollRef.current);
+			const startedAt = Date.now();
+			const pollId = setInterval(async () => {
+				if (Date.now() - startedAt > 10 * 60 * 1000) {
+					clearInterval(pollId);
+					installPollRef.current = null;
+					return;
+				}
+				try {
+					const fresh = await rpc.request.getInstalledIndex({});
+					onInstalledRefresh?.(fresh);
+					if (isInstalledFor(fresh, platform, game)) {
+						clearInterval(pollId);
+						installPollRef.current = null;
+					}
+				} catch {
+					/* transient RPC error — retry next tick */
+				}
+			}, 3_000);
+			installPollRef.current = pollId;
 			return;
 		}
 
@@ -286,6 +317,7 @@ export function GameDetail({
 		game?.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
 	const positivePct = game ? positivePctOf(game) : null;
 	const topTags = game?.tags.slice(0, 12) ?? [];
+	const isVR = game?.tags.some((t) => t.tag === 'VR') ?? false;
 
 	return (
 		<div className="-mx-6 -mt-6">
@@ -327,6 +359,11 @@ export function GameDetail({
 						</h2>
 						<div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200/90 drop-shadow">
 							{releaseYear && <span>{releaseYear}</span>}
+							{isVR && (
+								<span className="px-1.5 py-0.5 text-[11px] font-bold bg-violet-700/70 text-violet-100 rounded border border-violet-500/40 uppercase tracking-wider">
+									VR
+								</span>
+							)}
 							{game?.developers && game.developers.length > 0 && (
 								<>
 									<span className="opacity-50">·</span>
@@ -1205,6 +1242,32 @@ function RevealMore({
 	);
 }
 
+function ScreenshotThumb({
+	src,
+	onClick,
+}: { src: string; onClick: () => void }) {
+	const [loaded, setLoaded] = useState(false);
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			title="Open full-size"
+			className="aspect-[16/9] rounded-md overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 relative"
+		>
+			{!loaded && (
+				<div className="absolute inset-0 bg-zinc-800 animate-pulse" />
+			)}
+			<img
+				src={src}
+				alt=""
+				loading="lazy"
+				onLoad={() => setLoaded(true)}
+				className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+			/>
+		</button>
+	);
+}
+
 /**
  * Constrained screenshot grid: 3-column responsive grid showing one row
  * (3 thumbnails) by default. If there are more, a "Show N more" button
@@ -1221,20 +1284,11 @@ function ScreenshotsGrid({ screenshots }: { screenshots: Screenshot[] }) {
 		<div>
 			<div className="grid grid-cols-3 gap-2">
 				{visible.map((s, i) => (
-					<button
-						type="button"
+					<ScreenshotThumb
 						key={s.id}
+						src={s.path_thumbnail}
 						onClick={() => setLightboxIdx(i)}
-						title="Open full-size"
-						className="aspect-[16/9] rounded-md overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700"
-					>
-						<img
-							src={s.path_thumbnail}
-							alt=""
-							loading="lazy"
-							className="w-full h-full object-cover"
-						/>
-					</button>
+					/>
 				))}
 			</div>
 			{!expanded && (
