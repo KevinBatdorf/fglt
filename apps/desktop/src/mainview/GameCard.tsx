@@ -36,6 +36,12 @@ export function GameCard({
 		showMatchPct && game.score !== undefined && game.score !== null
 			? Math.round(game.score * 100)
 			: null;
+	// LibraryGame doesn't carry community tags (those only come with the
+	// detail response), so detect VR via Steam's `categories` array which
+	// is already returned by /library. "VR Only", "VR Supported", "Tracked
+	// Motion Controllers", etc. all flag a VR title.
+	const isVR =
+		game.categories?.some((c) => /\bVR\b/i.test(c)) ?? false;
 	const metaParts: string[] = [];
 	if (game.hltb_main !== null) metaParts.push(`${game.hltb_main}h main`);
 	if (positivePct !== null) metaParts.push(`${positivePct}% positive`);
@@ -61,18 +67,28 @@ export function GameCard({
 					Installed
 				</span>
 			)}
-			{matchPct !== null ? (
-				<span
-					className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-emerald-700/90 border border-emerald-600 text-white font-medium"
-					title="Hybrid keyword + semantic-vector relevance score"
-				>
-					{matchPct}% match
-				</span>
-			) : releaseYear ? (
-				<span className="absolute top-2 right-2 text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
-					{releaseYear}
-				</span>
-			) : null}
+			<div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+				{matchPct !== null ? (
+					<span
+						className="text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-emerald-700/90 border border-emerald-600 text-white font-medium"
+						title="Hybrid keyword + semantic-vector relevance score"
+					>
+						{matchPct}% match
+					</span>
+				) : releaseYear ? (
+					<span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-300">
+						{releaseYear}
+					</span>
+				) : null}
+				{isVR && (
+					<span
+						className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-violet-700/85 border border-violet-500/50 text-violet-50 uppercase"
+						title="VR-supported title"
+					>
+						VR
+					</span>
+				)}
+			</div>
 			<div className="absolute inset-x-0 bottom-0 pt-12 pb-2 px-2.5 bg-gradient-to-t from-zinc-950/95 via-zinc-950/75 to-transparent pointer-events-none">
 				<div className="text-xs font-medium text-zinc-50 line-clamp-3 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
 					{game.name}
