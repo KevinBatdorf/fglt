@@ -434,6 +434,7 @@ function App() {
 							docker={docker}
 							onOpenSettings={() => navigate({ kind: 'settings' })}
 							onInstalledRefresh={(idx) => setInstalled(idx)}
+							onOpenVR={() => navigate({ kind: 'filter', what: 'vr' })}
 						/>
 					</main>
 				</div>
@@ -645,6 +646,7 @@ function MainView({
 	docker,
 	onOpenSettings,
 	onInstalledRefresh,
+	onOpenVR,
 }: {
 	view: View;
 	stats: Stats | null;
@@ -660,6 +662,7 @@ function MainView({
 	docker: DockerStatus | null;
 	onOpenSettings: () => void;
 	onInstalledRefresh: (idx: InstalledIndex) => void;
+	onOpenVR: () => void;
 }) {
 	if (view.kind === 'home')
 		return (
@@ -681,6 +684,7 @@ function MainView({
 				onSearch={(q) => onPickVibe(q)}
 				onOpenList={onOpenList}
 				onInstalledRefresh={onInstalledRefresh}
+				onOpenVR={onOpenVR}
 			/>
 		);
 	if (view.kind === 'search')
