@@ -317,7 +317,9 @@ export function GameDetail({
 		game?.release_date?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
 	const positivePct = game ? positivePctOf(game) : null;
 	const topTags = game?.tags.slice(0, 12) ?? [];
-	const isVR = game?.tags.some((t) => t.tag === 'VR') ?? false;
+	const isVR =
+		(game?.tags.some((t) => t.tag === 'VR') ?? false) ||
+		(game?.categories?.some((c) => /\bVR\b/i.test(c)) ?? false);
 
 	return (
 		<div className="-mx-6 -mt-6">

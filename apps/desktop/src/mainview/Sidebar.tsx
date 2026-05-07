@@ -281,6 +281,15 @@ export function Sidebar({
 						icon="📚"
 						label="All games"
 					/>
+					{vis.vr && (
+						<Item
+							active={view.kind === 'filter' && view.what === 'vr'}
+							onClick={() => onNavigate({ kind: 'filter', what: 'vr' })}
+							onContextMenu={navHideContextMenu('vr', 'VR Games', setNavItemMenu)}
+							icon="🥽"
+							label="VR Games"
+						/>
+					)}
 					{vis.trending && (
 						<Item
 							active={view.kind === 'discover' && view.what === 'trending'}
@@ -376,15 +385,6 @@ export function Sidebar({
 							)}
 							icon="🆕"
 							label="Recently added"
-						/>
-					)}
-					{vis.vr && (
-						<Item
-							active={view.kind === 'filter' && view.what === 'vr'}
-							onClick={() => onNavigate({ kind: 'filter', what: 'vr' })}
-							onContextMenu={navHideContextMenu('vr', 'VR Games', setNavItemMenu)}
-							icon="🥽"
-							label="VR Games"
 						/>
 					)}
 					{vis.recently_viewed && (
