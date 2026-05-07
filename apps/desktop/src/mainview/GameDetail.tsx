@@ -1330,6 +1330,10 @@ function ScreenshotsGrid({ screenshots }: { screenshots: Screenshot[] }) {
  * Full-screen image viewer. Click image / Esc / X to close. Left/Right
  * arrows (and on-screen chevrons) loop forever through the image set.
  * Backdrop click also closes.
+ *
+ * Preloads ±2 neighbors so arrow navigation feels instant — without it,
+ * each click triggers a fresh CDN fetch and the lightbox sits empty
+ * while waiting.
  */
 function Lightbox({
 	images,
@@ -1342,6 +1346,8 @@ function Lightbox({
 	onChange: (i: number) => void;
 	onClose: () => void;
 }) {
+	const [loaded, setLoaded] = useState(false);
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') onClose();
@@ -1352,6 +1358,33 @@ function Lightbox({
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
 	}, [index, images.length, onChange, onClose]);
+
+	// Reset spinner state on each navigation. If the new image is already
+	// cached (because we preloaded it), onLoad fires synchronously and the
+	// spinner never paints.
+	useEffect(() => {
+		setLoaded(false);
+	}, [index]);
+
+	// Preload ±1 and ±2 so left/right is near-instant after the first hit.
+	// Using `new Image()` triggers a real HTTP request that the browser
+	// caches; when <img> later requests the same URL it's a memory hit.
+	useEffect(() => {
+		if (images.length <= 1) return;
+		const offsets = [1, -1, 2, -2];
+		const preloaders: HTMLImageElement[] = [];
+		for (const o of offsets) {
+			const i = (index + o + images.length) % images.length;
+			if (i === index) continue;
+			const img = new Image();
+			img.src = images[i];
+			preloaders.push(img);
+		}
+		return () => {
+			// Release references; in-flight requests get GC'd / cancelled.
+			preloaders.length = 0;
+		};
+	}, [index, images]);
 
 	const prev = () => onChange((index - 1 + images.length) % images.length);
 	const next = () => onChange((index + 1) % images.length);
@@ -1369,12 +1402,18 @@ function Lightbox({
 			    image dimensions. Group-hover on the outer backdrop reveals
 			    them when the user moves the cursor anywhere over the
 			    lightbox. */}
+			{!loaded && (
+				<div className="absolute inset-0 grid place-items-center pointer-events-none">
+					<div className="w-10 h-10 rounded-full border-2 border-zinc-600 border-t-zinc-200 animate-spin" />
+				</div>
+			)}
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop click handled by parent */}
 			<img
 				src={images[index]}
 				alt=""
 				onClick={(e) => e.stopPropagation()}
-				className="block max-w-[90vw] max-h-[90vh] w-auto h-auto select-none"
+				onLoad={() => setLoaded(true)}
+				className={`block max-w-[90vw] max-h-[90vh] w-auto h-auto select-none transition-opacity duration-150 ${loaded ? 'opacity-100' : 'opacity-0'}`}
 			/>
 			{images.length > 1 && (
 				<>
