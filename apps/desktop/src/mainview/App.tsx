@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import type { DockerStatus, InstalledIndex } from '../shared/types';
 import { AllGames } from './AllGames';
 import { Discover } from './Discover';
@@ -81,28 +88,48 @@ function App() {
 	const dockerLocked = docker !== null && docker.kind !== 'running';
 	const locked = !apiReachable || requiredMissing.length > 0 || dockerLocked;
 	const mainRef = useRef<HTMLElement>(null);
-	const scrollPositions = useRef<Map<string, number>>(new Map());
-	const pendingScrollRestore = useRef<number | null>(null);
+	const scrollPositions = useRef<Map<string, { top: number; height: number }>>(
+		new Map(),
+	);
+	const pendingScrollRestore = useRef<{ top: number; height: number } | null>(
+		null,
+	);
 
-	// Reset scroll on every view change. When navigating back, restore the
-	// saved position instead. Views re-fetch data on mount (showing a brief
-	// loading state), so we apply the position immediately AND again after
-	// 200ms to catch the render that follows the data arriving.
-	useEffect(() => {
-		if (pendingScrollRestore.current !== null) {
-			const pos = pendingScrollRestore.current;
-			pendingScrollRestore.current = null;
-			const el = mainRef.current;
-			if (!el) return;
-			requestAnimationFrame(() => {
-				el.scrollTop = pos;
-				setTimeout(() => {
-					el.scrollTop = pos;
-				}, 200);
-			});
-		} else {
-			mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+	// Reset scroll on every view change; on back, restore the saved position
+	// instead. Run as a layout effect (pre-paint) and pad the inner container
+	// to the previously-recorded height so `scrollTop` applies cleanly on the
+	// very first frame — otherwise the new view's LoadingState is too short
+	// for the scroll position to land, the user sees a snap to 0, and the
+	// scroll only catches up once the data arrives. The padding is dropped
+	// after a short window once the real content has filled in.
+	useLayoutEffect(() => {
+		const el = mainRef.current;
+		if (!el) return;
+		const pending = pendingScrollRestore.current;
+		pendingScrollRestore.current = null;
+
+		if (!pending) {
+			el.scrollTo({ top: 0, behavior: 'auto' });
+			return;
 		}
+
+		const inner = el.firstElementChild as HTMLElement | null;
+		if (!inner) {
+			el.scrollTop = pending.top;
+			return;
+		}
+
+		inner.style.minHeight = `${pending.height}px`;
+		el.scrollTop = pending.top;
+
+		const t = setTimeout(() => {
+			inner.style.minHeight = '';
+		}, 500);
+
+		return () => {
+			clearTimeout(t);
+			inner.style.minHeight = '';
+		};
 	}, [view]);
 
 	const refreshStats = useCallback(() => {
@@ -197,11 +224,13 @@ function App() {
 
 	const navigate = useCallback(
 		(next: View) => {
-			if (mainRef.current) {
-				scrollPositions.current.set(
-					JSON.stringify(view),
-					mainRef.current.scrollTop,
-				);
+			const el = mainRef.current;
+			const inner = el?.firstElementChild as HTMLElement | null;
+			if (el && inner) {
+				scrollPositions.current.set(JSON.stringify(view), {
+					top: el.scrollTop,
+					height: inner.scrollHeight,
+				});
 			}
 			setHistory((h) => [...h, view]);
 			setView(next);
@@ -239,9 +268,9 @@ function App() {
 		setHistory((h) => {
 			if (h.length === 0) return h;
 			const prev = h[h.length - 1];
-			const savedPos = scrollPositions.current.get(JSON.stringify(prev));
-			if (savedPos !== undefined) {
-				pendingScrollRestore.current = savedPos;
+			const saved = scrollPositions.current.get(JSON.stringify(prev));
+			if (saved !== undefined) {
+				pendingScrollRestore.current = saved;
 			}
 			setView(prev);
 			if (prev.kind === 'search') setQuery(prev.query);
