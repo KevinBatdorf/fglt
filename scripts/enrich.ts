@@ -77,7 +77,9 @@ async function main() {
 	// Pass 2: backfill — already enriched, but missing newer-source markers.
 	// We use *_fetched_at columns rather than the data's emptiness so games
 	// where Steam genuinely returned nothing aren't retried every tick.
-	// Oldest first so the library evens out over time.
+	// Least-recently-attempted first: every attempt (incl. skips on delisted
+	// apps) bumps enriched_at, so dead appids rotate to the back instead of
+	// starving the batch forever.
 	const backfillRows = (await raw`
 		SELECT appid, name FROM games
 		WHERE enriched_at IS NOT NULL
@@ -86,9 +88,7 @@ async function main() {
 		    OR steam_reviews_fetched_at IS NULL
 		    OR opencritic_fetched_at    IS NULL
 		  )
-		ORDER BY
-		  COALESCE(steam_reviews_fetched_at, '1970-01-01') ASC,
-		  appid ASC
+		ORDER BY enriched_at ASC, appid ASC
 		LIMIT ${BACKFILL_BATCH}
 	`) as unknown as { appid: number; name: string }[];
 	await runBatch('backfill', backfillRows);
