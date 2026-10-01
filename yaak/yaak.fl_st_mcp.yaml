@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_st_mcp
+createdAt: 2026-10-01T00:00:00
+updatedAt: 2026-10-01T00:00:00
+workspaceId: ws_steam
+folderId: null
+authentication: {}
+authenticationType: null
+description: MCP JSON-RPC endpoint examples (the same surface Claude Code talks to).
+headers: []
+name: MCP
+sortPriority: 8.0

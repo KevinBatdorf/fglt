@@ -199,6 +199,12 @@ When asked for status, run these and report the results:
 - When changing API endpoints, update both the Yaak workspace in `yaak/` AND
   `expose-tunnels/steam-mcp-proxy.js` (the MCP tool definitions and dispatch
   in the proxy mirror the REST routes — they are not auto-derived)
+- New Yaak records must use the `st_` ID prefix (`rq_st_<name>`,
+  `fl_st_<name>`, `env_st_<name>`) and live in a file named
+  `yaak.<id>.yaml`. Yaak IDs are global across every workspace in the app, so
+  a generic ID like `rq_mcp_tools` that also exists in another project's
+  workspace (e.g. anna's) gets merged with it and moved between workspaces.
+  Only `ws_steam` keeps its original ID.
 
 ## Conventions
 
