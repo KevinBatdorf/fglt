@@ -62,6 +62,7 @@ export async function fetchOwnedGames(): Promise<OwnedGame[]> {
 export interface AppDetails {
 	type?: string;
 	name?: string;
+	steam_appid?: number;
 	is_free?: boolean;
 	required_age?: number;
 	short_description?: string;
@@ -131,7 +132,14 @@ export async function fetchAppDetails(
 	}
 	const data: Record<string, { success: boolean; data?: AppDetails }> =
 		await res.json();
-	const entry = data[String(appid)];
+	// Steam sometimes keys the response by a different id (a DLC/package id)
+	// while `data.steam_appid` is still the one we asked for — so match on
+	// that, falling back to the requested key and then the sole entry.
+	const entries = Object.values(data);
+	const entry =
+		entries.find((e) => e?.data?.steam_appid === appid) ??
+		data[String(appid)] ??
+		(entries.length === 1 ? entries[0] : undefined);
 	if (!entry?.success || !entry.data) return null;
 	return entry.data;
 }

@@ -150,13 +150,20 @@ export async function refreshAppdetailsOnly(
 	raw: postgres.Sql,
 	appid: number,
 ): Promise<'ok' | 'skipped'> {
-	const details: AppDetails | null = await fetchAppDetails(appid).catch(
-		() => null,
-	);
+	// Rate limits / network errors throw and surface as failures — only a
+	// genuine `success: false` from Steam (delisted / retired appid) skips.
+	const details: AppDetails | null = await fetchAppDetails(appid);
 
 	if (!details) {
-		// Mark enriched_at so we don't keep retrying delisted apps every cycle.
-		await raw`UPDATE games SET enriched_at = now(), updated_at = now() WHERE appid = ${appid}`;
+		// Mark enriched_at + screenshots_fetched_at so the backfill rotates
+		// past delisted apps and the UI shows "no screenshots" not "pending".
+		await raw`
+			UPDATE games SET
+				enriched_at = now(),
+				screenshots_fetched_at = now(),
+				updated_at = now()
+			WHERE appid = ${appid}
+		`;
 		return 'skipped';
 	}
 

@@ -1,12 +1,14 @@
 /**
  * HowLongToBeat unofficial search.
  *
- * As of late 2025 HLTB moved off `/api/seek/<token>` (token-in-URL) and
- * onto a two-step flow:
- *   1. GET  /api/find/init?t=<ms>  → returns { token, hpKey, hpVal }
- *   2. POST /api/find              with x-auth-token / x-hp-key / x-hp-val
- *      headers, AND the same hpKey/hpVal pair embedded in the body as a
- *      dynamically-named field — that's the honeypot.
+ * As of Sept 2026 HLTB moved `/api/find` to `/api/search/site` and
+ * dropped the hpKey/hpVal honeypot. Current two-step flow:
+ *   1. GET  /api/search/site/init?t=<ms>  → returns { token }
+ *   2. POST /api/search/site              with an x-auth-token header
+ *
+ * The token is bound to the caller's IP + User-Agent, so the UA must be
+ * identical on both calls. A 403 from search means the token expired —
+ * their own frontend re-inits and retries once, and so do we.
  *
  * Rate-limit handling mirrors OpenCritic: a process-wide success counter
  * caps cron usage so the long-lived API container keeps headroom for
@@ -17,13 +19,7 @@
  */
 import { getConfig } from './config';
 
-interface HLTBAuth {
-	token: string;
-	hpKey: string;
-	hpVal: string;
-}
-
-let cachedAuth: { value: HLTBAuth; ts: number } | null = null;
+let cachedToken: { value: string; ts: number } | null = null;
 const AUTH_TTL_MS = 30 * 60 * 1000; // 30m — init is cheap so re-fetch often
 
 export class HLTBRateLimitError extends Error {
@@ -51,30 +47,32 @@ export function isHLTBRateLimited(): boolean {
 
 /** Test-only: reset cached auth + rate-limit flag between tests. */
 export function __resetHLTBStateForTests(): void {
-	cachedAuth = null;
+	cachedToken = null;
 	rateLimitedUntilProcessExit = false;
 	successesThisProcess = 0;
 }
 
-// HLTB's anti-bot keys on the literal Origin string their JS sends — and
-// the JS uses the trailing slash form. The browser would normally strip it
-// before sending, but we send what they expect verbatim. Without this,
-// /api/find returns 404 even with a valid token + headers.
+// The auth token encodes the User-Agent, so init and search must send the
+// same one.
 const HEADERS = {
 	'User-Agent':
 		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
 		'(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-	Origin: 'https://howlongtobeat.com/',
+	Origin: 'https://howlongtobeat.com',
 	Referer: 'https://howlongtobeat.com/',
 };
 
-async function getAuth(): Promise<HLTBAuth> {
+async function getToken(forceRefresh = false): Promise<string> {
 	if (rateLimitedUntilProcessExit) throw new HLTBRateLimitError();
-	if (cachedAuth && Date.now() - cachedAuth.ts < AUTH_TTL_MS) {
-		return cachedAuth.value;
+	if (
+		!forceRefresh &&
+		cachedToken &&
+		Date.now() - cachedToken.ts < AUTH_TTL_MS
+	) {
+		return cachedToken.value;
 	}
 	const res = await fetch(
-		`https://howlongtobeat.com/api/find/init?t=${Date.now()}`,
+		`https://howlongtobeat.com/api/search/site/init?t=${Date.now()}`,
 		{ headers: HEADERS, signal: AbortSignal.timeout(20_000) },
 	);
 	if (res.status === 429 || res.status === 403) {
@@ -84,23 +82,44 @@ async function getAuth(): Promise<HLTBAuth> {
 		);
 	}
 	if (!res.ok) throw new Error(`hltb init: HTTP ${res.status}`);
-	const data = (await res.json()) as Partial<HLTBAuth>;
-	if (!data.token || !data.hpKey || !data.hpVal) {
-		throw new Error('hltb init: missing auth fields');
-	}
-	const auth = {
-		token: data.token,
-		hpKey: data.hpKey,
-		hpVal: data.hpVal,
-	};
-	cachedAuth = { value: auth, ts: Date.now() };
-	return auth;
+	const data = (await res.json()) as { token?: string };
+	if (!data.token) throw new Error('hltb init: missing token');
+	cachedToken = { value: data.token, ts: Date.now() };
+	return data.token;
 }
 
 export interface HLTBResult {
 	main?: number;
 	extras?: number;
 	completionist?: number;
+}
+
+function searchBody(name: string) {
+	const anyOf = { mode: 'include', values: [] };
+	return {
+		searchType: 'games',
+		searchTerms: name.split(/\s+/).filter(Boolean),
+		searchPage: 1,
+		size: 5,
+		useCache: true,
+		searchOptions: {
+			games: {
+				userId: 0,
+				platform: '',
+				sortCategory: 'popular',
+				rangeCategory: 'main',
+				rangeTime: { min: null, max: null },
+				gameplay: { perspective: anyOf, flow: anyOf, genre: anyOf },
+				year: anyOf,
+				modifier: '',
+			},
+			users: { sortCategory: 'postcount' },
+			lists: { sortCategory: 'follows' },
+			filter: '',
+			sort: 0,
+			randomizer: 0,
+		},
+	};
 }
 
 export async function fetchHLTB(name: string): Promise<HLTBResult | null> {
@@ -112,63 +131,32 @@ export async function fetchHLTB(name: string): Promise<HLTBResult | null> {
 			`HLTB daily budget reached (${budget}); leaving headroom for manual /refresh`,
 		);
 	}
-	const auth = await getAuth();
-	// The hpKey/hpVal pair has to ALSO appear in the request body as a
-	// dynamically-named field — it's their honeypot proving you parsed
-	// the init response. Without it the request 404s.
-	const body: Record<string, unknown> = {
-		searchType: 'games',
-		searchTerms: name.split(/\s+/).filter(Boolean),
-		searchPage: 1,
-		size: 5,
-		useCache: true,
-		[auth.hpKey]: auth.hpVal,
-		searchOptions: {
-			games: {
-				userId: 0,
-				platform: '',
-				sortCategory: 'popular',
-				rangeCategory: 'main',
-				rangeTime: { min: null, max: null },
-				gameplay: {
-					perspective: '',
-					flow: '',
-					genre: '',
-					difficulty: '',
-				},
-				rangeYear: { min: '', max: '' },
-				modifier: '',
+	const body = JSON.stringify(searchBody(name));
+	const search = async (token: string) =>
+		fetch('https://howlongtobeat.com/api/search/site', {
+			method: 'POST',
+			headers: {
+				...HEADERS,
+				'Content-Type': 'application/json',
+				'x-auth-token': token,
 			},
-			users: { sortCategory: 'postcount' },
-			lists: { sortCategory: 'follows' },
-			filter: '',
-			sort: 0,
-			randomizer: 0,
-		},
-	};
+			body,
+			signal: AbortSignal.timeout(30_000),
+		});
 
-	const res = await fetch('https://howlongtobeat.com/api/find', {
-		method: 'POST',
-		headers: {
-			...HEADERS,
-			'Content-Type': 'application/json',
-			'x-auth-token': auth.token,
-			'x-hp-key': auth.hpKey,
-			'x-hp-val': auth.hpVal,
-		},
-		body: JSON.stringify(body),
-		signal: AbortSignal.timeout(30_000),
-	});
+	let res = await search(await getToken());
+	// 403 = expired token; re-init once before treating it as a block.
+	if (res.status === 403) res = await search(await getToken(true));
 	if (res.status === 429 || res.status === 403) {
 		rateLimitedUntilProcessExit = true;
 		throw new HLTBRateLimitError(
-			`HLTB find blocked (HTTP ${res.status}) — backing off`,
+			`HLTB search blocked (HTTP ${res.status}) — backing off`,
 		);
 	}
 	if (!res.ok) {
 		// auth may have rotated; clear cache so next call refetches
-		cachedAuth = null;
-		throw new Error(`hltb find failed: ${res.status}`);
+		cachedToken = null;
+		throw new Error(`hltb search failed: ${res.status}`);
 	}
 	successesThisProcess++;
 	const data: {
